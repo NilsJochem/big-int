@@ -1,0 +1,51 @@
+[package]
+name = "crypto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8.5"
+derive_more = "0.99.18"
+itertools = "0.13.0"
+
+[lints]
+# base
+clippy.nursery = { level = "warn", priority = -1 }
+clippy.pedantic = { level = "warn", priority = -1 }
+
+clippy.empty_structs_with_brackets = "warn"
+clippy.format_push_string = "warn"
+clippy.if_then_some_else_none = "warn"
+# clippy.missing_assert_message = "warn"
+clippy.multiple_inherent_impl = "warn"
+clippy.non_ascii_literal = "warn"
+clippy.self_named_module_files = "warn"
+clippy.semicolon_inside_block = "warn"
+clippy.separated_literal_suffix = "warn"
+clippy.str_to_string = "warn"
+clippy.string_to_string = "warn"
+clippy.clone_on_ref_ptr = "warn"
+clippy.dbg_macro = "warn"
+clippy.float_cmp_const = "warn"
+clippy.infinite_loop = "warn"
+clippy.missing_asserts_for_indexing = "warn"
+clippy.undocumented_unsafe_blocks = "warn"
+# clippy.todo = "warn"
+clippy.unnecessary_self_imports = "warn"
+rust.unsafe_op_in_unsafe_fn = "warn"
+# rust.missing_docs = "warn"
+
+clippy.cast_possible_truncation = "allow"
+clippy.cast_possible_wrap = "allow"
+clippy.cast_precision_loss = "allow"
+clippy.cast_lossless = "allow"
+clippy.cast_sign_loss = "allow"
+clippy.single_match_else = "allow"
+clippy.option_if_let_else = "allow"
+clippy.must_use_candidate = "allow"
+clippy.too_many_lines = "allow"
+clippy.impl_trait_in_params = "allow"
+
+# custom for this crate
+clippy.missing_errors_doc = "allow"
+clippy.missing_panics_doc = "allow"
