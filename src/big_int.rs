@@ -1,4 +1,6 @@
+use core::fmt;
 use std::{
+    fmt::Write,
     iter,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
@@ -98,10 +100,7 @@ pub mod util_traits {
     implPrim!(u128, i128, 128);
 }
 
-#[cfg(target_endian = "little")]
-const IS_LE: bool = true;
-#[cfg(target_endian = "big")]
-const IS_LE: bool = false;
+const IS_LE: bool = cfg!(target_endian = "little");
 
 #[cfg(target_pointer_width = "64")]
 type HalfSizeNative = u32;
@@ -122,6 +121,31 @@ impl std::fmt::Display for HalfSize {
         write!(f, "{}", &**self)
     }
 }
+impl std::fmt::LowerHex for HalfSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::LowerHex::fmt(
+            &if IS_LE {
+                **self
+            } else {
+                HalfSizeNative::from_be(**self)
+            },
+            f,
+        )
+    }
+}
+impl std::fmt::UpperHex for HalfSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::UpperHex::fmt(
+            &if IS_LE {
+                **self
+            } else {
+                HalfSizeNative::from_be(**self)
+            },
+            f,
+        )
+    }
+}
+
 impl PartialEq for HalfSize {
     fn eq(&self, other: &Self) -> bool {
         **self == **other
@@ -206,7 +230,6 @@ pub struct BigInt {
     /// holds the `HalfSize` values in LE order
     data: Vec<HalfSize>,
 }
-
 impl std::fmt::Debug for BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -218,6 +241,38 @@ impl std::fmt::Debug for BigInt {
         )
     }
 }
+// impl std::fmt::Display for BigInt {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         todo!("need divided / modulo")
+//     }
+// }
+impl std::fmt::LowerHex for BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buf = String::new();
+        for part in self.data.iter().rev() {
+            write!(buf, "{part:x}")?;
+        }
+        f.pad_integral(
+            !self.is_negative(),
+            if f.alternate() { "0x" } else { "" },
+            &buf,
+        )
+    }
+}
+impl std::fmt::UpperHex for BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buf = String::new();
+        for part in self.data.iter().rev() {
+            write!(buf, "{part:X}")?;
+        }
+        f.pad_integral(
+            !self.is_negative(),
+            if f.alternate() { "0X" } else { "" },
+            &buf,
+        )
+    }
+}
+
 impl<P: util_traits::UNum> FromIterator<P> for BigInt {
     /// the iter should contain the parts in little endian order
     fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
@@ -442,6 +497,55 @@ mod tests {
                     ]
                 }
             )
+        }
+    }
+    mod output {
+        use super::*;
+
+        #[test]
+        fn lower_hex() {
+            assert_eq!(
+                format!("{:x}", BigInt::from(0x99887766554433221100u128)),
+                "99887766554433221100"
+            );
+            assert_eq!(
+                format!("{:#x}", BigInt::from(0x99887766554433221100u128)),
+                "0x99887766554433221100"
+            );
+
+            assert_eq!(
+                format!("{:x}", BigInt::from(-0x99887766554433221100i128)),
+                "-99887766554433221100"
+            );
+            assert_eq!(
+                format!("{:#x}", BigInt::from(-0x99887766554433221100i128)),
+                "-0x99887766554433221100"
+            );
+
+            assert_eq!(
+                format!("{:0>32x}", BigInt::from(0x99887766554433221100u128)),
+                "00000000000099887766554433221100"
+            );
+
+            assert_eq!(
+                format!("{:#032x}", BigInt::from(0x99887766554433221100u128)),
+                "0x000000000099887766554433221100"
+            );
+
+            assert_eq!(
+                format!(
+                    "{:#032x}",
+                    BigInt::from(0xeeddccbbaa99887766554433221100u128)
+                ),
+                "0xeeddccbbaa99887766554433221100"
+            );
+            assert_eq!(
+                format!(
+                    "{:#032X}",
+                    BigInt::from(0xeeddccbbaa99887766554433221100u128)
+                ),
+                "0XEEDDCCBBAA99887766554433221100"
+            );
         }
     }
 }
