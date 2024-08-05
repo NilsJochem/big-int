@@ -105,6 +105,7 @@ const IS_LE: bool = cfg!(target_endian = "little");
 #[cfg(target_pointer_width = "64")]
 type HalfSizeNative = u32;
 const HALF_SIZE_BYTES: usize = HalfSizeNative::BITS as usize / 8;
+const FULL_SIZE_BYTES: usize = usize::BITS as usize / 8;
 
 #[derive(Clone, Copy)]
 pub union HalfSize {
@@ -152,13 +153,22 @@ impl PartialEq for HalfSize {
     }
 }
 impl Eq for HalfSize {}
+impl PartialOrd for HalfSize {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for HalfSize {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (**self).cmp(&**other)
+    }
+}
 
 impl Default for HalfSize {
     fn default() -> Self {
         Self { native: 0 }
     }
 }
-
 impl From<HalfSizeNative> for HalfSize {
     fn from(value: HalfSizeNative) -> Self {
         Self { native: value }
@@ -234,11 +244,19 @@ impl std::fmt::Debug for BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Number {{ {} {:x?} , {} }}",
+            "Number {{ {} 0x[",
             if self.is_positive() { '+' } else { '-' },
-            self.data,
-            self.bytes
-        )
+            )?;
+        for (pos, elem) in self.data.iter().with_position() {
+            write!(f, "{elem:08x}")?; // TODO hardcoded size
+            if matches!(
+                pos,
+                itertools::Position::First | itertools::Position::Middle
+            ) {
+                f.write_str(", ")?
+            }
+        }
+        write!(f, "] , {} }}", self.bytes)
     }
 }
 // impl std::fmt::Display for BigInt {
@@ -372,10 +390,12 @@ impl BigInt {
             self.bytes += offset;
         }
     }
+    fn set_length(&mut self, value: usize) {
+        self.bytes = (value as isize) * ((self.is_positive() as isize) * 2 - 1);
+    }
     fn strip_trailing_zeros(&mut self) {
         while self.data.last().is_some_and(|&it| *it == 0) {
-            self.data.pop();
-            self.extent_length(-4);
+            self.pop();
         }
         if let Some(last) = self.data.last() {
             self.extent_length(
@@ -388,10 +408,45 @@ impl BigInt {
         }
     }
 
+    fn pop(&mut self) {
+        self.extent_length(
+            -(Some(self.partial())
+                .filter(|&it| it != 0)
+                .unwrap_or(HALF_SIZE_BYTES) as isize),
+        );
+        self.data.pop();
+    }
+    fn push(&mut self, value: impl Into<HalfSize>) {
+        let value = value.into();
+        if *value == 0 {
+            return;
+        }
+        self.data.push(value);
+        self.set_length(self.data.len() * HALF_SIZE_BYTES);
+        self.strip_trailing_zeros()
+    }
+
     fn negate(&mut self) {
         self.bytes *= -1;
     }
 }
+
+impl PartialOrd for BigInt {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for BigInt {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering as O;
+        match self.bytes.cmp(&other.bytes) {
+            O::Less => O::Less,
+            O::Greater => O::Greater,
+            O::Equal => self.data.iter().rev().cmp(other.data.iter().rev()),
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -545,6 +600,58 @@ mod tests {
                     BigInt::from(0xeeddccbbaa99887766554433221100u128)
                 ),
                 "0XEEDDCCBBAA99887766554433221100"
+            );
+        }
+    }
+    mod order {
+        use std::cmp::Ordering;
+
+        use super::*;
+        #[test]
+        fn same() {
+            assert_eq!(
+                BigInt::from(0x99887766554433221100u128)
+                    .cmp(&BigInt::from(0x99887766554433221100u128)),
+                Ordering::Equal
+            );
+            assert_eq!(
+                BigInt::from(-0x99887766554433221100i128)
+                    .cmp(&BigInt::from(-0x99887766554433221100i128)),
+                Ordering::Equal
+            );
+        }
+        #[test]
+        fn negated() {
+            assert_eq!(
+                BigInt::from(0x99887766554433221100u128)
+                    .cmp(&BigInt::from(-0x99887766554433221100i128)),
+                Ordering::Greater
+            );
+            assert_eq!(
+                BigInt::from(-0x99887766554433221100i128)
+                    .cmp(&BigInt::from(0x99887766554433221100i128)),
+                Ordering::Less
+            );
+        }
+        #[test]
+        fn middle_diff() {
+            assert_eq!(
+                BigInt::from(0x99888866554433221100u128)
+                    .cmp(&BigInt::from(0x99887766554433221100i128)),
+                Ordering::Greater
+            );
+            assert_eq!(
+                BigInt::from(0x99887766554433221100i128)
+                    .cmp(&BigInt::from(0x99888866554433221100i128)),
+                Ordering::Less
+            );
+        }
+        #[test]
+        fn size_diff() {
+            assert_eq!(
+                BigInt::from(0xfffffffffffffffffffu128)
+                    .cmp(&BigInt::from(0x99887766554433221100i128)),
+                Ordering::Less
             );
         }
     }
