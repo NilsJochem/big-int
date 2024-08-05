@@ -232,6 +232,214 @@ impl IndexMut<usize> for HalfSize {
     }
 }
 
+#[derive(Clone, Copy)]
+union FullSize {
+    native: usize,
+    halfs: [HalfSize; 2],
+    #[allow(dead_code)]
+    ne_bytes: [u8; FULL_SIZE_BYTES],
+}
+impl std::fmt::Debug for FullSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:#x}")
+    }
+}
+impl std::fmt::Display for FullSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", **self)
+    }
+}
+impl std::fmt::LowerHex for FullSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::LowerHex::fmt(
+            &if IS_LE {
+                **self
+            } else {
+                usize::from_be(**self)
+            },
+            f,
+        )
+    }
+}
+impl std::fmt::UpperHex for FullSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::UpperHex::fmt(
+            &if IS_LE {
+                **self
+            } else {
+                usize::from_be(**self)
+            },
+            f,
+        )
+    }
+}
+
+impl PartialEq for FullSize {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+impl Eq for FullSize {}
+
+impl From<usize> for FullSize {
+    fn from(native: usize) -> Self {
+        Self { native }
+    }
+}
+impl From<HalfSize> for FullSize {
+    fn from(lower: HalfSize) -> Self {
+        Self::new(lower, HalfSize::default())
+    }
+}
+impl FullSize {
+    const fn new(lower: HalfSize, higher: HalfSize) -> Self {
+        if IS_LE {
+            Self {
+                halfs: [lower, higher],
+            }
+        } else {
+            Self {
+                halfs: [higher, lower],
+            }
+        }
+    }
+    #[allow(dead_code)]
+    const fn lower(self) -> HalfSize {
+        if IS_LE {
+            unsafe { self.halfs[0] }
+        } else {
+            unsafe { self.halfs[1] }
+        }
+    }
+    #[allow(dead_code)]
+    const fn higher(self) -> HalfSize {
+        if IS_LE {
+            unsafe { self.halfs[1] }
+        } else {
+            unsafe { self.halfs[0] }
+        }
+    }
+}
+
+impl Deref for FullSize {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        // SAFETY: union will always be properly initialized
+        unsafe { &self.native }
+    }
+}
+impl DerefMut for FullSize {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: union will always be properly initialized
+        unsafe { &mut self.native }
+    }
+}
+
+macro_rules! implHalfMath {
+    (a $($trait:tt)::*, $func:tt) => {
+		implHalfMath!(a $($trait)::*, $func, Self);
+		implHalfMath!(a $($trait)::*, $func, &Self);
+		implHalfMath!(a $($trait)::*, $func, u32);
+		implHalfMath!(a $($trait)::*, $func, &u32);
+	};
+    (a $($trait:tt)::*, $func:tt, Self) => {
+		impl $($trait)::* for HalfSize {
+			fn $func(&mut self, rhs: Self) {
+				$($trait)::*::$func(&mut **self, *rhs)
+			}
+		}
+	};
+    (a $($trait:tt)::*, $func:tt, &Self) => {
+		impl $($trait)::*<&Self> for HalfSize {
+			fn $func(&mut self, rhs: &Self) {
+				$($trait)::*::$func(&mut **self, **rhs)
+			}
+		}
+	};
+    (a $($trait:tt)::*, $func:tt, $rhs:tt) => {
+		impl $($trait)::*<$rhs> for HalfSize {
+			fn $func(&mut self, rhs: $rhs) {
+				$($trait)::*::$func(&mut **self, rhs)
+			}
+		}
+	};
+    (a $($trait:tt)::*, $func:tt, &$rhs:tt) => {
+		impl $($trait)::*<&$rhs> for HalfSize {
+			fn $func(&mut self, rhs: &$rhs) {
+				$($trait)::*::$func(&mut **self, *rhs)
+			}
+		}
+	};
+
+    ($($trait:tt)::*, $func:tt) => {
+		implHalfMath!($($trait)::*, $func, Self);
+		implHalfMath!($($trait)::*, $func, &Self);
+		implHalfMath!($($trait)::*, $func, u32);
+		implHalfMath!($($trait)::*, $func, &u32);
+	};
+    ($($trait:tt)::*, $func:tt, Self) => {
+		impl $($trait)::* for HalfSize {
+			type Output = Self;
+			fn $func(self, rhs: Self) -> Self::Output  {
+				Self::from($($trait)::*::$func(*self, *rhs))
+			}
+		}
+		impl $($trait)::* for &HalfSize {
+			type Output = HalfSize;
+			fn $func(self, rhs: Self) -> Self::Output  {
+				$($trait)::*::$func(*self, *rhs)
+			}
+		}
+	};
+    ($($trait:tt)::*, $func:tt, &Self) => {
+		impl $($trait)::*<&Self> for HalfSize {
+			type Output = Self;
+			fn $func(self, rhs: &Self) -> Self::Output  {
+				Self::from($($trait)::*::$func(*self, **rhs))
+			}
+		}
+		impl $($trait)::*<&Self> for &HalfSize {
+			type Output = HalfSize;
+			fn $func(self, rhs: &Self) -> Self::Output  {
+				$($trait)::*::$func(*self, **rhs)
+			}
+		}
+	};
+    ($($trait:tt)::*, $func:tt, $rhs:tt) => {
+		impl $($trait)::*<$rhs> for HalfSize {
+			type Output = Self;
+			fn $func(self, rhs: $rhs) -> Self::Output  {
+				Self::from($($trait)::*::$func( *self, rhs))
+			}
+		}
+		impl $($trait)::*<$rhs> for &HalfSize {
+			type Output = HalfSize;
+			fn $func(self, rhs: $rhs) -> Self::Output  {
+				$($trait)::*::$func(*self, rhs)
+			}
+		}
+	};
+    ($($trait:tt)::*, $func:tt, &$rhs:tt) => {
+		impl $($trait)::*<&$rhs> for HalfSize {
+			type Output = Self;
+			fn $func(self, rhs: &$rhs) -> Self::Output  {
+				Self::from($($trait)::*::$func( *self, *rhs))
+			}
+		}
+		impl $($trait)::*<&$rhs> for &HalfSize {
+			type Output = HalfSize;
+			fn $func(self, rhs: &$rhs) -> Self::Output  {
+				$($trait)::*::$func(*self, *rhs)
+			}
+		}
+	};
+}
+implHalfMath!(a std::ops::BitOrAssign, bitor_assign);
+implHalfMath!(std::ops::BitOr, bitor);
+implHalfMath!(a std::ops::BitAndAssign, bitand_assign);
+implHalfMath!(std::ops::BitAnd, bitand);
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct BigInt {
     /// used to encode the length in bytes, the number of patial bytes in the last element and the sign of the number
@@ -652,6 +860,29 @@ mod tests {
                 BigInt::from(0xfffffffffffffffffffu128)
                     .cmp(&BigInt::from(0x99887766554433221100i128)),
                 Ordering::Less
+            );
+        }
+    }
+    mod full_size {
+        use super::*;
+
+        #[test]
+        fn load() {
+            assert_eq!(
+                FullSize::from(0x7766554433221100usize),
+                FullSize::new(HalfSize::from(0x33221100), HalfSize::from(0x77665544))
+            );
+        }
+
+        #[test]
+        fn read() {
+            assert_eq!(
+                FullSize::from(0x7766554433221100usize).lower(),
+                HalfSize::from(0x33221100)
+            );
+            assert_eq!(
+                FullSize::from(0x7766554433221100usize).higher(),
+                HalfSize::from(0x77665544)
             );
         }
     }
