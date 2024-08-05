@@ -109,8 +109,8 @@ const FULL_SIZE_BYTES: usize = usize::BITS as usize / 8;
 
 #[derive(Clone, Copy)]
 pub union HalfSize {
-    native: HalfSizeNative,
     ne_bytes: [u8; HALF_SIZE_BYTES],
+    native: HalfSizeNative,
 }
 impl std::fmt::Debug for HalfSize {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -576,6 +576,24 @@ impl BigInt {
         self.bytes.signum()
     }
 
+    pub const fn is_zero(&self) -> bool {
+        self.bytes == 0
+    }
+    pub fn is_abs_one(&self) -> bool {
+        self.data.len() == 1 && *self.data[0] == 1
+    }
+
+    pub fn ilog2(&self) -> Option<usize> {
+        let mut canditate = None;
+        for (i, part) in self.data.iter().enumerate().filter(|&(_, it)| **it != 0) {
+            if canditate.is_some() || !(*part).is_power_of_two() {
+                return None;
+            }
+            canditate = Some((*part).ilog2() as usize + i * HalfSizeNative::BITS as usize);
+        }
+        canditate
+    }
+
     // number of partial bytes in the last `HalfSize`
     const fn partial(&self) -> usize {
         self.bytes.unsigned_abs() % HALF_SIZE_BYTES
@@ -615,7 +633,9 @@ impl BigInt {
         while self.data.last().is_some_and(|&it| *it == 0) {
             self.pop();
         }
-        self.bytes = (self.data.len() * HALF_SIZE_BYTES) as isize * self.signum();
+        self.bytes =
+            (self.data.len() * HALF_SIZE_BYTES) as isize * (!self.is_negative() as isize * 2 - 1);
+
         if let Some(last) = self.data.last() {
             self.extent_length(
                 -(last
@@ -645,6 +665,12 @@ impl BigInt {
     }
     pub fn abs(&mut self) {
         self.bytes = self.bytes.abs();
+    }
+    #[must_use]
+    pub fn abs_clone(&self) -> Self {
+        let mut out = self.clone();
+        out.abs();
+        out
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
         self.data.iter().rev().cmp(rhs.data.iter().rev())
@@ -764,9 +790,7 @@ impl std::ops::ShlAssign<&usize> for BigInt {
         let full = rhs / HalfSizeNative::BITS as usize;
 
         let mut carry = HalfSize::default();
-        self.extent_length(full as isize);
         if partial > 0 {
-            self.extent_length(1);
             for part in &mut self.data {
                 let old_carry = carry;
                 let result = FullSize::from(std::ops::Shl::shl(
@@ -785,6 +809,7 @@ impl std::ops::ShlAssign<&usize> for BigInt {
                 .chain(carry)
                 .collect();
         }
+        self.recalc_len();
     }
 }
 
@@ -816,6 +841,7 @@ impl std::ops::ShrAssign<&usize> for BigInt {
 implBigMath!(a std::ops::AddAssign, add_assign, std::ops::Add, add);
 impl std::ops::AddAssign<&Self> for BigInt {
     fn add_assign(&mut self, rhs: &Self) {
+        // consider optimising adding 0
         if self.is_different_sign(rhs) {
             self.negate();
             std::ops::SubAssign::sub_assign(self, rhs);
@@ -861,7 +887,7 @@ impl std::ops::AddAssign<&Self> for BigInt {
 #[allow(clippy::multiple_inherent_impl)]
 impl BigInt {
     const fn is_different_sign(&self, rhs: &Self) -> bool {
-        self.is_positive() ^ rhs.is_positive()
+        !self.is_negative() ^ !rhs.is_negative()
     }
     fn sub_assign_smaller_same_sign(&mut self, rhs: &Self) {
         assert!(
@@ -937,6 +963,111 @@ impl std::ops::SubAssign<&Self> for BigInt {
         } else {
             self.sub_assign_smaller_same_sign(rhs);
         }
+    }
+}
+
+#[allow(clippy::multiple_inherent_impl)]
+impl BigInt {
+    fn mul_at_offset(&self, rhs: HalfSize, i: usize) -> Self {
+        let mut out = Self::default();
+
+        let mut carry = HalfSize::default();
+        for elem in self.data.iter().skip(i) {
+            let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
+            let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
+
+            carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
+            out.data.push(add_result.lower());
+        }
+        out.data.push(carry);
+        out.recalc_len();
+        out
+    }
+    fn try_mul_by_shift(&self, rhs: &Self) -> Option<Self> {
+        rhs.ilog2().map(|pow| self.abs_clone() << pow)
+    }
+}
+
+impl std::ops::Mul<&HalfSize> for &BigInt {
+    type Output = BigInt;
+
+    fn mul(self, rhs: &HalfSize) -> Self::Output {
+        match **rhs {
+            0 => return BigInt::default(),
+            1 => return self.abs_clone(),
+            x if x.is_power_of_two() => {
+                let mut out = self.abs_clone();
+                std::ops::ShlAssign::shl_assign(&mut out, x.ilog2() as usize);
+                return out;
+            }
+            _ => {}
+        }
+        self.mul_at_offset(*rhs, 0)
+    }
+}
+impl std::ops::Mul<HalfSize> for &BigInt {
+    type Output = BigInt;
+
+    fn mul(self, rhs: HalfSize) -> Self::Output {
+        self.mul_at_offset(rhs, 0)
+    }
+}
+impl std::ops::Mul<Self> for &BigInt {
+    type Output = BigInt;
+    fn mul(self, rhs: Self) -> Self::Output {
+        if self.data.len() < rhs.data.len() {
+            // try to minimize outer loops
+            return std::ops::Mul::mul(rhs, self);
+        }
+        let mut out;
+        if let Some(shortcut) = self
+            .try_mul_by_shift(rhs)
+            .or_else(|| rhs.try_mul_by_shift(self))
+        {
+            out = shortcut;
+        } else {
+            out = BigInt::default();
+            for (i, rhs_part) in rhs.data.iter().enumerate() {
+                let mut result = std::ops::Mul::mul(self, rhs_part);
+                result <<= i * HalfSizeNative::BITS as usize;
+                out += result;
+            }
+
+            out.recalc_len();
+        }
+        out.bytes *= self.signum() * rhs.signum();
+        out
+    }
+}
+impl std::ops::Mul<Self> for BigInt {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        std::ops::Mul::mul(&self, &rhs)
+    }
+}
+impl std::ops::Mul<&Self> for BigInt {
+    type Output = Self;
+
+    fn mul(self, rhs: &Self) -> Self::Output {
+        std::ops::Mul::mul(&self, rhs)
+    }
+}
+impl std::ops::Mul<BigInt> for &BigInt {
+    type Output = BigInt;
+
+    fn mul(self, rhs: BigInt) -> Self::Output {
+        std::ops::Mul::mul(self, &rhs)
+    }
+}
+impl std::ops::MulAssign for BigInt {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = std::ops::Mul::mul(self as &Self, rhs);
+    }
+}
+impl std::ops::MulAssign<&Self> for BigInt {
+    fn mul_assign(&mut self, rhs: &Self) {
+        *self = std::ops::Mul::mul(self as &Self, rhs);
     }
 }
 
@@ -1225,7 +1356,8 @@ mod tests {
             assert_eq!(
                 BigInt::from(0x998877665544332211u128) << 4,
                 BigInt::from(0x9988776655443322110u128)
-            )
+            );
+            assert_eq!(BigInt::from(1) << 1, BigInt::from(2));
         }
         #[test]
         fn shr() {
@@ -1296,6 +1428,68 @@ mod tests {
                 BigInt::from(0x1_0000_0000_0000_0000_0000_0000_0000i128) - BigInt::from(1),
                 BigInt::from(0xffff_ffff_ffff_ffff_ffff_ffff_ffffi128)
             );
+        }
+
+        #[test]
+        fn mul() {
+            assert_eq!(BigInt::from(7) * BigInt::from(6), BigInt::from(42));
+            assert_eq!(
+                BigInt::from(30_000_000_700_000u128) * BigInt::from(60),
+                BigInt::from(180_000_004_200_0000u128)
+            );
+        }
+        #[test]
+        fn mul_one_big() {
+            assert_eq!(
+                BigInt::from(0x0feeddcc_bbaa9988_77665544_33221100u128) * BigInt::from(2),
+                [0x1fddbb9977553310eeccaa8866442200u128]
+                    .into_iter()
+                    .collect::<BigInt>(),
+                "lhs big"
+            );
+            assert_eq!(
+                BigInt::from(2) * BigInt::from(0x0feeddcc_bbaa9988_77665544_33221100u128),
+                [0x1fddbb9977553310eeccaa8866442200u128]
+                    .into_iter()
+                    .collect::<BigInt>(),
+                "rhs big"
+            );
+        }
+        #[test]
+        fn mul_sign_pow_two() {
+            assert_eq!(BigInt::from(2) * BigInt::from(2), BigInt::from(4));
+            assert_eq!(BigInt::from(-2) * BigInt::from(2), BigInt::from(-4));
+            assert_eq!(BigInt::from(2) * BigInt::from(-2), BigInt::from(-4));
+            assert_eq!(BigInt::from(-2) * BigInt::from(-2), BigInt::from(4));
+        }
+        #[test]
+        fn mul_sign() {
+            assert_eq!(BigInt::from(3) * BigInt::from(3), BigInt::from(9));
+            assert_eq!(BigInt::from(-3) * BigInt::from(3), BigInt::from(-9));
+            assert_eq!(BigInt::from(3) * BigInt::from(-3), BigInt::from(-9));
+            assert_eq!(BigInt::from(-3) * BigInt::from(-3), BigInt::from(9));
+        }
+        #[test]
+        fn mul_both_big() {
+            assert_eq!(
+                BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128)
+                    * BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128),
+                [
+                    0x33432fd716ccd7135f999f4e85210000u128,
+                    0xffddbcbf06b5eed38628ddc706bf1222u128,
+                ]
+                .into_iter()
+                .collect::<BigInt>()
+            );
+        }
+
+        #[test]
+        fn log_2() {
+            assert_eq!(BigInt::from(1).ilog2(), Some(0));
+            assert_eq!(BigInt::from(2).ilog2(), Some(1));
+            assert_eq!(BigInt::from(0x8000_0000_0000_0000u64).ilog2(), Some(63));
+            assert_eq!(BigInt::from(0x1000_0001_0000_0000u64).ilog2(), None);
+            assert_eq!(BigInt::from(0x1000_0000_1000_0000u64).ilog2(), None);
         }
     }
 }
