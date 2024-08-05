@@ -283,6 +283,7 @@ impl Eq for FullSize {}
 
 impl From<usize> for FullSize {
     fn from(native: usize) -> Self {
+        // SAFTY: access to native is always possible
         Self { native }
     }
 }
@@ -291,6 +292,8 @@ impl From<HalfSize> for FullSize {
         Self::new(lower, HalfSize::default())
     }
 }
+/// SAFTY: access to part is always possible
+#[allow(clippy::undocumented_unsafe_blocks)]
 impl FullSize {
     const fn new(lower: HalfSize, higher: HalfSize) -> Self {
         if IS_LE {
@@ -303,7 +306,6 @@ impl FullSize {
             }
         }
     }
-    #[allow(dead_code)]
     const fn lower(self) -> HalfSize {
         if IS_LE {
             unsafe { self.halfs[0] }
@@ -311,7 +313,6 @@ impl FullSize {
             unsafe { self.halfs[1] }
         }
     }
-    #[allow(dead_code)]
     const fn higher(self) -> HalfSize {
         if IS_LE {
             unsafe { self.halfs[1] }
@@ -437,6 +438,8 @@ macro_rules! implHalfMath {
 }
 implHalfMath!(a std::ops::BitOrAssign, bitor_assign);
 implHalfMath!(std::ops::BitOr, bitor);
+implHalfMath!(a std::ops::BitXorAssign, bitxor_assign);
+implHalfMath!(std::ops::BitXor, bitxor);
 implHalfMath!(a std::ops::BitAndAssign, bitand_assign);
 implHalfMath!(std::ops::BitAnd, bitand);
 
@@ -454,14 +457,14 @@ impl std::fmt::Debug for BigInt {
             f,
             "Number {{ {} 0x[",
             if self.is_positive() { '+' } else { '-' },
-            )?;
-        for (pos, elem) in self.data.iter().with_position() {
+        )?;
+        for (pos, elem) in self.data.iter().rev().with_position() {
             write!(f, "{elem:08x}")?; // TODO hardcoded size
             if matches!(
                 pos,
                 itertools::Position::First | itertools::Position::Middle
             ) {
-                f.write_str(", ")?
+                f.write_str(", ")?;
             }
         }
         write!(f, "] , {} }}", self.bytes)
@@ -569,9 +572,18 @@ impl BigInt {
     pub const fn is_positive(&self) -> bool {
         self.bytes.is_positive()
     }
+    pub const fn signum(&self) -> isize {
+        self.bytes.signum()
+    }
 
+    // number of partial bytes in the last `HalfSize`
     const fn partial(&self) -> usize {
         self.bytes.unsigned_abs() % HALF_SIZE_BYTES
+    }
+    // number of missing bytes in the last `HalfSize`, to have no partial remaining
+    #[allow(dead_code)]
+    const fn co_partial(&self) -> usize {
+        (-self.bytes.abs()).rem_euclid(HALF_SIZE_BYTES as isize) as usize
     }
 
     /// extends the number with the given Halfsizes. Assumes, that no partial bytes exist
@@ -585,7 +597,7 @@ impl BigInt {
             self.extent_length(HALF_SIZE_BYTES as isize);
         }
 
-        self.strip_trailing_zeros();
+        self.recalc_len();
     }
     fn extent_length(&mut self, offset: isize) {
         assert!(
@@ -598,13 +610,12 @@ impl BigInt {
             self.bytes += offset;
         }
     }
-    fn set_length(&mut self, value: usize) {
-        self.bytes = (value as isize) * ((self.is_positive() as isize) * 2 - 1);
-    }
-    fn strip_trailing_zeros(&mut self) {
+
+    fn recalc_len(&mut self) {
         while self.data.last().is_some_and(|&it| *it == 0) {
             self.pop();
         }
+        self.bytes = (self.data.len() * HALF_SIZE_BYTES) as isize * self.signum();
         if let Some(last) = self.data.last() {
             self.extent_length(
                 -(last
@@ -617,12 +628,8 @@ impl BigInt {
     }
 
     fn pop(&mut self) {
-        self.extent_length(
-            -(Some(self.partial())
-                .filter(|&it| it != 0)
-                .unwrap_or(HALF_SIZE_BYTES) as isize),
-        );
         self.data.pop();
+        self.recalc_len();
     }
     fn push(&mut self, value: impl Into<HalfSize>) {
         let value = value.into();
@@ -630,12 +637,17 @@ impl BigInt {
             return;
         }
         self.data.push(value);
-        self.set_length(self.data.len() * HALF_SIZE_BYTES);
-        self.strip_trailing_zeros()
+        self.recalc_len();
     }
 
-    fn negate(&mut self) {
-        self.bytes *= -1;
+    pub fn negate(&mut self) {
+        self.bytes = std::ops::Neg::neg(self.bytes);
+    }
+    pub fn abs(&mut self) {
+        self.bytes = self.bytes.abs();
+    }
+    pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
+        self.data.iter().rev().cmp(rhs.data.iter().rev())
     }
 }
 
@@ -650,11 +662,283 @@ impl Ord for BigInt {
         match self.bytes.cmp(&other.bytes) {
             O::Less => O::Less,
             O::Greater => O::Greater,
-            O::Equal => self.data.iter().rev().cmp(other.data.iter().rev()),
+            O::Equal => self.abs_ord(other),
         }
     }
 }
 
+macro_rules! implBigMath {
+    (a $($assign_trait:tt)::*, $assign_func:tt, $($trait:tt)::*, $func:tt) => {
+        implBigMath!(a $($assign_trait)::*, $assign_func, $($trait)::*, $func, Self);
+    };
+    (a $($assign_trait:tt)::*, $assign_func:tt, $($trait:tt)::*, $func:tt, $rhs:tt) => {
+		impl $($assign_trait)::*<$rhs> for BigInt {
+			fn $assign_func(&mut self, rhs: $rhs) {
+				$($assign_trait)::*::$assign_func(self, &rhs)
+			}
+		}
+		impl $($trait)::*<&$rhs> for BigInt {
+			type Output = Self;
+
+			fn $func(mut self, rhs: &$rhs) -> Self::Output {
+				$($assign_trait)::*::$assign_func(&mut self, rhs);
+				self
+			}
+		}
+		impl $($trait)::*<$rhs> for BigInt {
+			type Output = Self;
+
+			fn $func(mut self, rhs: $rhs) -> Self::Output {
+				$($assign_trait)::*::$assign_func(&mut self, &rhs);
+				self
+			}
+		}
+	};
+}
+
+// no `std::ops::Not`, cause implied zeros to the left would need to be flipped
+implBigMath!(a std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
+impl std::ops::BitOrAssign<&Self> for BigInt {
+    fn bitor_assign(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitOrAssign::bitor_assign(part, rhs);
+        }
+        if self.data.len() < rhs.data.len() {
+            self.data.extend(rhs.data.iter().dropping(self.data.len()));
+            self.extent_length(HALF_SIZE_BYTES as isize);
+        }
+    }
+}
+implBigMath!(a std::ops::BitXorAssign, bitxor_assign, std::ops::BitXor, bitxor);
+impl std::ops::BitXorAssign<&Self> for BigInt {
+    fn bitxor_assign(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitXorAssign::bitxor_assign(part, rhs);
+        }
+        if self.data.len() < rhs.data.len() {
+            self.data.extend(
+                rhs.data
+                    .iter()
+                    .dropping(self.data.len())
+                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
+            );
+            self.extent_length(HALF_SIZE_BYTES as isize);
+        }
+        self.recalc_len();
+    }
+}
+implBigMath!(a
+    std::ops::BitAndAssign,
+    bitand_assign,
+    std::ops::BitAnd,
+    bitand
+);
+impl std::ops::BitAndAssign<&Self> for BigInt {
+    fn bitand_assign(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitAndAssign::bitand_assign(part, rhs);
+        }
+
+        if self.data.len() > rhs.data.len() {
+            let to_remove = self.data.len() - rhs.data.len();
+            for _ in 0..to_remove {
+                self.pop();
+            }
+        }
+        self.recalc_len();
+    }
+}
+impl std::ops::Neg for BigInt {
+    type Output = Self;
+
+    fn neg(mut self) -> Self::Output {
+        self.negate();
+        self
+    }
+}
+
+implBigMath!(a std::ops::ShlAssign, shl_assign, std::ops::Shl, shl, usize);
+impl std::ops::ShlAssign<&usize> for BigInt {
+    fn shl_assign(&mut self, rhs: &usize) {
+        let partial = rhs % HalfSizeNative::BITS as usize;
+        let full = rhs / HalfSizeNative::BITS as usize;
+
+        let mut carry = HalfSize::default();
+        self.extent_length(full as isize);
+        if partial > 0 {
+            self.extent_length(1);
+            for part in &mut self.data {
+                let old_carry = carry;
+                let result = FullSize::from(std::ops::Shl::shl(
+                    *FullSize::new(*part, HalfSize::default()),
+                    partial,
+                ));
+                *part = result.lower() | old_carry;
+                carry = result.higher();
+            }
+        }
+        let carry = Some(carry).filter(|&it| *it != 0);
+        if carry.is_some() || full > 0 {
+            self.data = std::iter::repeat(HalfSize::default())
+                .take(full)
+                .chain(self.data.iter().copied())
+                .chain(carry)
+                .collect();
+        }
+    }
+}
+
+implBigMath!(a std::ops::ShrAssign, shr_assign, std::ops::Shr, shr, usize);
+impl std::ops::ShrAssign<&usize> for BigInt {
+    fn shr_assign(&mut self, rhs: &usize) {
+        let partial = rhs % HalfSizeNative::BITS as usize;
+        let full = rhs / HalfSizeNative::BITS as usize;
+
+        let mut carry = HalfSize::default();
+        if partial > 0 {
+            for part in self.data.iter_mut().rev() {
+                let old_carry = carry;
+                let result = FullSize::from(std::ops::Shr::shr(
+                    *FullSize::new(HalfSize::default(), *part),
+                    partial,
+                ));
+                *part = result.higher() | old_carry;
+                carry = result.lower();
+            }
+        }
+        if full > 0 {
+            self.data = self.data.iter().copied().dropping(full).collect();
+        }
+        self.recalc_len();
+    }
+}
+
+implBigMath!(a std::ops::AddAssign, add_assign, std::ops::Add, add);
+impl std::ops::AddAssign<&Self> for BigInt {
+    fn add_assign(&mut self, rhs: &Self) {
+        if self.is_different_sign(rhs) {
+            self.negate();
+            std::ops::SubAssign::sub_assign(self, rhs);
+            self.negate();
+            return;
+        }
+
+        let orig_self_len = self.data.len();
+
+        if orig_self_len < rhs.data.len() {
+            self.data
+                .extend(rhs.data.iter().skip(orig_self_len).copied());
+            self.bytes = rhs.bytes;
+        }
+
+        let mut carry = HalfSize::default();
+        for elem in self
+            .data
+            .iter_mut()
+            .zip_longest(rhs.data.iter().take(orig_self_len).copied())
+        {
+            let (part, rhs) = match elem {
+                itertools::EitherOrBoth::Right(_rhs) => unreachable!("self was extendet"),
+                itertools::EitherOrBoth::Left(_part) if *carry == 0 => {
+                    break;
+                }
+                itertools::EitherOrBoth::Left(part) => (part, None),
+                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
+            };
+            let result = **part as usize + *carry as usize;
+            let result = FullSize::from(match rhs {
+                None => result,
+                Some(rhs) => result + *rhs as usize,
+            });
+
+            *part = result.lower();
+            carry = result.higher();
+        }
+        self.push(carry);
+    }
+}
+
+#[allow(clippy::multiple_inherent_impl)]
+impl BigInt {
+    const fn is_different_sign(&self, rhs: &Self) -> bool {
+        self.is_positive() ^ rhs.is_positive()
+    }
+    fn sub_assign_smaller_same_sign(&mut self, rhs: &Self) {
+        assert!(
+            !self.is_different_sign(rhs),
+            "self has different sign as rhs"
+        );
+        assert!(self.abs_ord(rhs).is_ge(), "self is smaller than rhs");
+
+        let mut carry = false;
+        for elem in self.data.iter_mut().zip_longest(&rhs.data) {
+            let (part, rhs) = match elem {
+                itertools::EitherOrBoth::Right(_rhs) => unreachable!("self is always bigger"),
+                itertools::EitherOrBoth::Left(_part) if !carry => {
+                    break;
+                }
+                itertools::EitherOrBoth::Left(part) => (part, None),
+                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
+            };
+
+            let result = FullSize::from(
+                *FullSize::new(*part, HalfSize::from(1))
+                    - carry as usize
+                    - rhs.map_or(0, |&rhs| *rhs as usize),
+            );
+            *part = result.lower();
+            carry = *result.higher() == 0; // extra bit was needed
+        }
+
+        self.recalc_len();
+    }
+}
+impl std::ops::Sub for BigInt {
+    type Output = Self;
+    fn sub(mut self, rhs: Self) -> Self::Output {
+        std::ops::SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+impl std::ops::Sub<&Self> for BigInt {
+    type Output = Self;
+    fn sub(mut self, rhs: &Self) -> Self::Output {
+        std::ops::SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+impl std::ops::SubAssign for BigInt {
+    fn sub_assign(&mut self, mut rhs: Self) {
+        if self.is_different_sign(&rhs) {
+            rhs.negate();
+            std::ops::AddAssign::add_assign(self, &rhs);
+            return;
+        }
+        if self.abs_ord(&rhs).is_lt() {
+            rhs.sub_assign_smaller_same_sign(self);
+            *self = std::ops::Neg::neg(rhs);
+        } else {
+            self.sub_assign_smaller_same_sign(&rhs);
+        }
+    }
+}
+impl std::ops::SubAssign<&Self> for BigInt {
+    fn sub_assign(&mut self, rhs: &Self) {
+        if self.is_different_sign(rhs) {
+            self.negate();
+            std::ops::AddAssign::add_assign(self, rhs);
+            self.negate();
+            return;
+        }
+        if self.abs_ord(rhs).is_lt() {
+            let mut rhs = rhs.clone();
+            rhs.sub_assign_smaller_same_sign(self);
+            *self = std::ops::Neg::neg(rhs);
+        } else {
+            self.sub_assign_smaller_same_sign(rhs);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -883,6 +1167,134 @@ mod tests {
             assert_eq!(
                 FullSize::from(0x7766554433221100usize).higher(),
                 HalfSize::from(0x77665544)
+            );
+        }
+    }
+    mod big_math {
+        use super::*;
+
+        #[test]
+        fn bit_or() {
+            assert_eq!(
+                BigInt::from(0x1111_00000000_00001111_01010101u128)
+                    | BigInt::from(0x0101_01010101_11110000u128),
+                BigInt::from(0x1111_00000101_01011111_11110101u128),
+                "bigger lhs"
+            );
+            assert_eq!(
+                BigInt::from(0x0101_01010101_11110000u128)
+                    | BigInt::from(0x1111_00000000_00001111_01010101u128),
+                BigInt::from(0x1111_00000101_01011111_11110101u128),
+                "bigger rhs"
+            );
+        }
+        #[test]
+        fn bit_xor() {
+            assert_eq!(
+                BigInt::from(0x1111_00000000_00001111_01010101u128)
+                    ^ BigInt::from(0x0101_01010101_11110000u128),
+                BigInt::from(0x1111_00000101_01011010_10100101u128),
+                "bigger lhs"
+            );
+            assert_eq!(
+                BigInt::from(0x0101_01010101_11110000u128)
+                    ^ BigInt::from(0x1111_00000000_00001111_01010101u128),
+                BigInt::from(0x1111_00000101_01011010_10100101u128),
+                "bigger rhs"
+            );
+        }
+
+        #[test]
+        fn bit_and() {
+            assert_eq!(
+                BigInt::from(0x1111_00000000_00001111_01010101u128)
+                    & BigInt::from(0x0101_01010101_11110000u128),
+                BigInt::from(0x0101_01010000u128),
+                "bigger lhs"
+            );
+            assert_eq!(
+                BigInt::from(0x0101_01010101_11110000u128)
+                    & BigInt::from(0x1111_00000000_00001111_01010101u128),
+                BigInt::from(0x0101_01010000u128),
+                "bigger rhs"
+            );
+        }
+
+        #[test]
+        fn shl() {
+            assert_eq!(
+                BigInt::from(0x998877665544332211u128) << 4,
+                BigInt::from(0x9988776655443322110u128)
+            )
+        }
+        #[test]
+        fn shr() {
+            assert_eq!(
+                BigInt::from(0x998877665544332211u128) >> 4,
+                BigInt::from(0x99887766554433221u128)
+            )
+        }
+        #[test]
+        fn add_overflow() {
+            assert_eq!(
+                BigInt::from(0xffff_ffff_ffff_ffffu64) + BigInt::from(1),
+                BigInt::from(0x1_0000_0000_0000_0000u128),
+                "bigger lhs"
+            );
+            assert_eq!(
+                BigInt::from(1) + BigInt::from(0xffff_ffff_ffff_ffffu64),
+                BigInt::from(0x1_0000_0000_0000_0000u128),
+                "bigger rhs"
+            );
+        }
+        #[test]
+        fn add_middle_overflow() {
+            assert_eq!(
+                BigInt::from(0x1000_0000_ffff_ffff_ffff_ffffu128) + BigInt::from(1),
+                BigInt::from(0x1000_0001_0000_0000_0000_0000u128),
+                "bigger lhs"
+            );
+            assert_eq!(
+                BigInt::from(1) + BigInt::from(0x1000_0000_ffff_ffff_ffff_ffffu128),
+                BigInt::from(0x1000_0001_0000_0000_0000_0000u128),
+                "bigger rhs"
+            );
+        }
+        #[test]
+        fn add_two_negative() {
+            assert_eq!(
+                BigInt::from(-0x11223344_55667788i128) + BigInt::from(-0x88776655_44332211i128),
+                BigInt::from(-0x9999_9999_9999_9999i128)
+            );
+        }
+        #[test]
+        fn add() {
+            assert_eq!(
+                BigInt::from(0x11223344_55667788i128) - BigInt::from(-0x88776655_44332211i128),
+                BigInt::from(0x9999_9999_9999_9999i128)
+            );
+            assert_eq!(
+                BigInt::from(0x11223344_55667788i128) + BigInt::from(0x88776655_44332211i128),
+                BigInt::from(0x9999_9999_9999_9999i128)
+            );
+        }
+
+        #[test]
+        fn sub() {
+            assert_eq!(
+                BigInt::from(0x9999_9999_9999_9999i128) - BigInt::from(0x88776655_44332211i128),
+                BigInt::from(0x11223344_55667788i128)
+            );
+            assert_eq!(
+                BigInt::from(0x9999_9999_9999_9999i128) + BigInt::from(-0x88776655_44332211i128),
+                BigInt::from(0x11223344_55667788i128)
+            );
+        }
+        #[test]
+        fn sub_overflow() {
+            assert_eq!(
+                BigInt::from(0x1_0000_0000_0000_0000_0000_0000_0000i128) - BigInt::from(1),
+                BigInt::from(0xffff_ffff_ffff_ffff_ffff_ffff_ffffi128)
             );
         }
     }
