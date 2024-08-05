@@ -6,6 +6,8 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
+
+use crate::boo::Boo;
 pub mod util_traits {
     use itertools::Either;
 
@@ -720,6 +722,43 @@ macro_rules! implBigMath {
 			}
 		}
 	};
+
+    ($($assign_trait:tt)::*, $assign_func:tt, $($trait:tt)::*, $func:tt) => {
+        impl $($trait)::* for BigInt {
+            implBigMath!(body $func, Self);
+        }
+        impl $($trait)::*<&BigInt> for BigInt {
+            implBigMath!(body $func, &BigInt);
+        }
+        impl $($trait)::* for &BigInt {
+            implBigMath!(body $func, Self);
+        }
+        impl $($trait)::*<BigInt> for &BigInt {
+            implBigMath!(body $func, BigInt);
+        }
+        impl $($assign_trait)::* for BigInt {
+            fn $assign_func(&mut self, rhs: Self) {
+                assert!(BigInt::$func(Boo::from(self), Boo::from(rhs)).is_none(), "did give &mut, shouldn't get result");
+            }
+        }
+        impl $($assign_trait)::*<&Self> for BigInt {
+            fn $assign_func(&mut self, rhs: &Self) {
+                assert!(BigInt::$func(Boo::from(self), Boo::from(rhs)).is_none(), "did give &mut, shouldn't get result");
+            }
+        }
+    };
+    (body $func:tt, $rhs:tt) => {
+        type Output = BigInt;
+        fn $func(self, rhs: $rhs) -> Self::Output {
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect("didn't give &mut, should get result")
+        }
+    };
+    (body $func:tt, &$rhs:tt) => {
+        type Output = BigInt;
+        fn $func(self, rhs: &$rhs) -> Self::Output {
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect("didn't give &mut, should get result")
+        }
+    };
 }
 
 // no `std::ops::Not`, cause implied zeros to the left would need to be flipped
@@ -889,6 +928,82 @@ impl BigInt {
     const fn is_different_sign(&self, rhs: &Self) -> bool {
         !self.is_negative() ^ !rhs.is_negative()
     }
+    fn sub<'b1, 'b2, B1, B2>(lhs: B1, rhs: B2) -> Option<Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+
+        if lhs.is_different_sign(&rhs) {
+            return match (lhs, rhs) {
+                (Boo::BorrowedMut(_), Boo::BorrowedMut(_)) => panic!("can't have to Borrow_mut's"),
+                (Boo::BorrowedMut(lhs), rhs) => {
+                    lhs.negate();
+                    *lhs += rhs.as_ref();
+                    lhs.negate();
+                    None
+                }
+                (lhs, Boo::BorrowedMut(rhs)) => {
+                    rhs.negate();
+                    *rhs += lhs.as_ref();
+                    None
+                }
+                (Boo::Owned(mut lhs), Boo::Borrowed(rhs)) => {
+                    lhs.negate();
+                    lhs += rhs;
+                    lhs.negate();
+                    Some(lhs)
+                }
+                (Boo::Borrowed(lhs), Boo::Borrowed(rhs)) => {
+                    let mut owned = rhs.clone();
+                    owned.negate();
+                    owned += lhs;
+                    Some(owned)
+                }
+                (lhs, Boo::Owned(mut rhs)) => {
+                    rhs.negate();
+                    rhs += lhs.as_ref();
+                    Some(rhs)
+                }
+            };
+        }
+
+        let (lhs, rhs, need_negate) = if lhs.abs_ord(&rhs).is_lt() {
+            (rhs, lhs, true)
+        } else {
+            (lhs, rhs, false)
+        };
+        let finnish = |it: &mut Self| {
+            if need_negate {
+                it.negate();
+            }
+        };
+
+        match (lhs, rhs) {
+            (Boo::BorrowedMut(_), Boo::BorrowedMut(_)) => panic!("can't have to Borrow_mut's"),
+            (Boo::BorrowedMut(lhs), rhs) => {
+                lhs.sub_assign_smaller_same_sign(&rhs);
+                finnish(lhs);
+                None
+            }
+            (lhs, Boo::BorrowedMut(borrowed)) => {
+                let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
+                borrowed.sub_assign_smaller_same_sign(&old_rhs);
+                finnish(borrowed);
+                None
+            }
+            (lhs, rhs) => {
+                // can't really use storage in rhs (when existing) because algo can only sub smaller
+                let mut lhs = lhs.cloned();
+                lhs.sub_assign_smaller_same_sign(&rhs);
+                finnish(&mut lhs);
+                Some(lhs)
+            }
+        }
+    }
+
     fn sub_assign_smaller_same_sign(&mut self, rhs: &Self) {
         assert!(
             !self.is_different_sign(rhs),
@@ -919,52 +1034,8 @@ impl BigInt {
         self.recalc_len();
     }
 }
-impl std::ops::Sub for BigInt {
-    type Output = Self;
-    fn sub(mut self, rhs: Self) -> Self::Output {
-        std::ops::SubAssign::sub_assign(&mut self, rhs);
-        self
-    }
-}
-impl std::ops::Sub<&Self> for BigInt {
-    type Output = Self;
-    fn sub(mut self, rhs: &Self) -> Self::Output {
-        std::ops::SubAssign::sub_assign(&mut self, rhs);
-        self
-    }
-}
-impl std::ops::SubAssign for BigInt {
-    fn sub_assign(&mut self, mut rhs: Self) {
-        if self.is_different_sign(&rhs) {
-            rhs.negate();
-            std::ops::AddAssign::add_assign(self, &rhs);
-            return;
-        }
-        if self.abs_ord(&rhs).is_lt() {
-            rhs.sub_assign_smaller_same_sign(self);
-            *self = std::ops::Neg::neg(rhs);
-        } else {
-            self.sub_assign_smaller_same_sign(&rhs);
-        }
-    }
-}
-impl std::ops::SubAssign<&Self> for BigInt {
-    fn sub_assign(&mut self, rhs: &Self) {
-        if self.is_different_sign(rhs) {
-            self.negate();
-            std::ops::AddAssign::add_assign(self, rhs);
-            self.negate();
-            return;
-        }
-        if self.abs_ord(rhs).is_lt() {
-            let mut rhs = rhs.clone();
-            rhs.sub_assign_smaller_same_sign(self);
-            *self = std::ops::Neg::neg(rhs);
-        } else {
-            self.sub_assign_smaller_same_sign(rhs);
-        }
-    }
-}
+
+implBigMath!(std::ops::SubAssign, sub_assign, std::ops::Sub, sub);
 
 #[allow(clippy::multiple_inherent_impl)]
 impl BigInt {
