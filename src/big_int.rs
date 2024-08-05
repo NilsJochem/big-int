@@ -843,6 +843,19 @@ impl BigInt {
             Either::Right(it) => it,
         }
     }
+    fn either_from_boo(value: Boo<'_, Self>) -> Either<Self, &mut Self> {
+        match value {
+            Boo::BorrowedMut(value) => Either::Right(value),
+            value => Either::Left(value.cloned()),
+        }
+    }
+    #[allow(dead_code)]
+    fn boo_from_either(value: Either<Self, &mut Self>) -> Boo<'_, Self> {
+        match value {
+            Either::Left(owned) => Boo::Owned(owned),
+            Either::Right(borrow) => Boo::BorrowedMut(borrow),
+        }
+    }
 
     fn return_first<'b, 'b1: 'b, 'b2: 'b>(
         ret: Boo<'b1, Self>,
@@ -855,6 +868,20 @@ impl BigInt {
                 Either::Right(ret)
             }
             (ret, _) => Either::Left(ret.cloned()),
+        }
+    }
+
+    fn return_any<'b, 'b1: 'b, 'b2: 'b>(
+        a: Boo<'b1, Self>,
+        b: Boo<'b2, Self>,
+        value: Self,
+    ) -> Either<Self, &'b mut Self> {
+        match (a, b) {
+            (Boo::BorrowedMut(borrow_mut), _) | (_, Boo::BorrowedMut(borrow_mut)) => {
+                *borrow_mut = value;
+                Either::Right(borrow_mut)
+            }
+            (_, _) => Either::Left(value),
         }
     }
 
@@ -1136,6 +1163,32 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
+        if lhs.is_zero() || rhs.is_zero() {
+            return Self::return_any(lhs, rhs, Self::default());
+        }
+
+        if rhs.is_abs_one() {
+            let mut either = Self::either_from_boo(lhs);
+            Self::get_mut(&mut either).bytes *= rhs.signum();
+            return either;
+        }
+        if lhs.is_abs_one() {
+            let mut either = Self::either_from_boo(rhs);
+            Self::get_mut(&mut either).bytes *= lhs.signum();
+            return either;
+        }
+
+        if let Some(pow) = rhs.ilog2() {
+            let mut either = Self::either_from_boo(lhs);
+            *Self::get_mut(&mut either) <<= &pow;
+            return either;
+        }
+        if let Some(pow) = lhs.ilog2() {
+            let mut either = Self::either_from_boo(rhs);
+            *Self::get_mut(&mut either) <<= &pow;
+            return either;
+        }
+
         match (lhs, rhs) {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
                 *borrow_mut = borrow_mut.mul_internal(&borrow);
@@ -1150,22 +1203,14 @@ impl BigInt {
         if self.data.len() < rhs.data.len() {
             return rhs.mul_internal(self);
         }
-        let mut out;
-        if let Some(shortcut) = self
-            .try_mul_by_shift(rhs)
-            .or_else(|| rhs.try_mul_by_shift(self))
-        {
-            out = shortcut;
-        } else {
-            out = Self::default();
-            for (i, rhs_part) in rhs.data.iter().enumerate() {
-                let mut result = std::ops::Mul::mul(self, rhs_part);
-                result <<= i * HalfSizeNative::BITS as usize;
-                out += result;
-            }
-
-            out.recalc_len();
+        let mut out = Self::default();
+        for (i, rhs_part) in rhs.data.iter().enumerate() {
+            let mut result = std::ops::Mul::mul(self, rhs_part);
+            result <<= i * HalfSizeNative::BITS as usize;
+            out += result;
         }
+
+        out.recalc_len();
         out.bytes *= self.signum() * rhs.signum();
         out
     }
@@ -1183,9 +1228,6 @@ impl BigInt {
         out.data.push(carry);
         out.recalc_len();
         out
-    }
-    fn try_mul_by_shift(&self, rhs: &Self) -> Option<Self> {
-        rhs.ilog2().map(|pow| self.abs_clone() << pow)
     }
 }
 
