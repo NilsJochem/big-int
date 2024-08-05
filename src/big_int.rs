@@ -761,58 +761,6 @@ macro_rules! implBigMath {
     };
 }
 
-// no `std::ops::Not`, cause implied zeros to the left would need to be flipped
-implBigMath!(a std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
-impl std::ops::BitOrAssign<&Self> for BigInt {
-    fn bitor_assign(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitOrAssign::bitor_assign(part, rhs);
-        }
-        if self.data.len() < rhs.data.len() {
-            self.data.extend(rhs.data.iter().dropping(self.data.len()));
-            self.extent_length(HALF_SIZE_BYTES as isize);
-        }
-    }
-}
-implBigMath!(a std::ops::BitXorAssign, bitxor_assign, std::ops::BitXor, bitxor);
-impl std::ops::BitXorAssign<&Self> for BigInt {
-    fn bitxor_assign(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitXorAssign::bitxor_assign(part, rhs);
-        }
-        if self.data.len() < rhs.data.len() {
-            self.data.extend(
-                rhs.data
-                    .iter()
-                    .dropping(self.data.len())
-                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
-            );
-            self.extent_length(HALF_SIZE_BYTES as isize);
-        }
-        self.recalc_len();
-    }
-}
-implBigMath!(a
-    std::ops::BitAndAssign,
-    bitand_assign,
-    std::ops::BitAnd,
-    bitand
-);
-impl std::ops::BitAndAssign<&Self> for BigInt {
-    fn bitand_assign(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitAndAssign::bitand_assign(part, rhs);
-        }
-
-        if self.data.len() > rhs.data.len() {
-            let to_remove = self.data.len() - rhs.data.len();
-            for _ in 0..to_remove {
-                self.pop();
-            }
-        }
-        self.recalc_len();
-    }
-}
 impl std::ops::Neg for BigInt {
     type Output = Self;
 
@@ -883,7 +831,7 @@ impl BigInt {
         !self.is_negative() ^ !rhs.is_negative()
     }
 
-    fn assert_pair_valid(pair: (&Boo<'_, BigInt>, &Boo<'_, BigInt>)) {
+    fn assert_pair_valid(pair: (&Boo<'_, Self>, &Boo<'_, Self>)) {
         assert!(
             !matches!(pair.0, Boo::BorrowedMut(_)) || !matches!(pair.1, Boo::BorrowedMut(_)),
             "can't have to Borrow_mut's"
@@ -897,8 +845,8 @@ impl BigInt {
     }
 
     fn return_first<'b, 'b1: 'b, 'b2: 'b>(
-        ret: Boo<'b1, BigInt>,
-        other: Boo<'b2, BigInt>,
+        ret: Boo<'b1, Self>,
+        other: Boo<'b2, Self>,
     ) -> Either<Self, &'b mut Self> {
         match (ret, other) {
             (Boo::BorrowedMut(ret), _) => Either::Right(ret),
@@ -909,6 +857,98 @@ impl BigInt {
             (ret, _) => Either::Left(ret.cloned()),
         }
     }
+
+    fn refer_direct<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+        lhs: B1,
+        rhs: B2,
+        func: impl FnOnce(&mut Self, &Self),
+    ) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+        Self::assert_pair_valid((&lhs, &rhs));
+
+        match (lhs, rhs) {
+            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+                func(borrow_mut, &borrow);
+                Either::Right(borrow_mut)
+            }
+            (Boo::Borrowed(lhs), rhs) => {
+                let mut owned = rhs.cloned();
+                func(&mut owned, lhs);
+                Either::Left(owned)
+            }
+            (lhs, rhs) => {
+                let mut owned = lhs.cloned();
+                func(&mut owned, &rhs);
+                Either::Left(owned)
+            }
+        }
+    }
+
+    fn bitor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        Self::refer_direct(lhs, rhs, Self::bit_or_assign_internal)
+    }
+    fn bit_or_assign_internal(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitOrAssign::bitor_assign(part, rhs);
+        }
+        if self.data.len() < rhs.data.len() {
+            self.data.extend(rhs.data.iter().dropping(self.data.len()));
+            self.extent_length(HALF_SIZE_BYTES as isize);
+        }
+    }
+    fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        Self::refer_direct(lhs, rhs, Self::bit_xor_assign_internal)
+    }
+    fn bit_xor_assign_internal(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitXorAssign::bitxor_assign(part, rhs);
+        }
+        if self.data.len() < rhs.data.len() {
+            self.data.extend(
+                rhs.data
+                    .iter()
+                    .dropping(self.data.len())
+                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
+            );
+            self.extent_length(HALF_SIZE_BYTES as isize);
+        }
+        self.recalc_len();
+    }
+
+    fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        Self::refer_direct(lhs, rhs, Self::bit_and_assign_internal)
+    }
+    fn bit_and_assign_internal(&mut self, rhs: &Self) {
+        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
+            std::ops::BitAndAssign::bitand_assign(part, rhs);
+        }
+
+        if self.data.len() > rhs.data.len() {
+            let to_remove = self.data.len() - rhs.data.len();
+            for _ in 0..to_remove {
+                self.pop();
+            }
+        }
+        self.recalc_len();
+    }
+
     fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
     where
         B1: Into<Boo<'b1, Self>>,
@@ -938,32 +978,13 @@ impl BigInt {
                 }
                 (mut lhs, rhs) => {
                     lhs.try_get_mut().unwrap().negate();
-                    let mut res = Self::sub(Boo::from(lhs), rhs);
-
-                    Self::get_mut(&mut res).negate();
-                    res
+                    let mut ret = Self::sub(lhs, rhs);
+                    Self::get_mut(&mut ret).negate();
+                    ret
                 }
             };
         }
-        match (lhs, rhs) {
-            (lhs, Boo::BorrowedMut(rhs)) => {
-                rhs.add_assign_internal(&lhs);
-                Either::Right(rhs)
-            }
-            (Boo::BorrowedMut(lhs), rhs) => {
-                lhs.add_assign_internal(&rhs);
-                Either::Right(lhs)
-            }
-            (lhs, Boo::Owned(mut rhs)) => {
-                rhs.add_assign_internal(&lhs);
-                Either::Left(rhs)
-            }
-            (lhs, Boo::Borrowed(rhs)) => {
-                let mut owned = lhs.cloned();
-                owned.add_assign_internal(&rhs);
-                Either::Left(owned)
-            }
-        }
+        Self::refer_direct(lhs, rhs, Self::add_assign_internal)
     }
     fn add_assign_internal(&mut self, rhs: &Self) {
         let orig_self_len = self.data.len();
@@ -1036,9 +1057,9 @@ impl BigInt {
                 }
                 (mut lhs, rhs) => {
                     lhs.try_get_mut().unwrap().negate();
-                    let mut res = Self::add(lhs, rhs);
-                    Self::get_mut(&mut res).negate();
-                    res
+                    let mut ret = Self::add(lhs, rhs);
+                    Self::get_mut(&mut ret).negate();
+                    ret
                 }
             };
         }
@@ -1107,6 +1128,20 @@ impl BigInt {
     }
 }
 
+// no `std::ops::Not`, cause implied zeros to the left would need to be flipped
+implBigMath!(std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
+implBigMath!(
+    std::ops::BitXorAssign,
+    bitxor_assign,
+    std::ops::BitXor,
+    bitxor
+);
+implBigMath!(
+    std::ops::BitAndAssign,
+    bitand_assign,
+    std::ops::BitAnd,
+    bitand
+);
 implBigMath!(std::ops::SubAssign, sub_assign, std::ops::Sub, sub);
 implBigMath!(std::ops::AddAssign, add_assign, std::ops::Add, add);
 
