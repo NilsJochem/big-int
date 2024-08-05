@@ -1126,27 +1126,49 @@ impl BigInt {
 
         self.recalc_len();
     }
-}
 
-// no `std::ops::Not`, cause implied zeros to the left would need to be flipped
-implBigMath!(std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
-implBigMath!(
-    std::ops::BitXorAssign,
-    bitxor_assign,
-    std::ops::BitXor,
-    bitxor
-);
-implBigMath!(
-    std::ops::BitAndAssign,
-    bitand_assign,
-    std::ops::BitAnd,
-    bitand
-);
-implBigMath!(std::ops::SubAssign, sub_assign, std::ops::Sub, sub);
-implBigMath!(std::ops::AddAssign, add_assign, std::ops::Add, add);
+    fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+        Self::assert_pair_valid((&lhs, &rhs));
 
-#[allow(clippy::multiple_inherent_impl)]
-impl BigInt {
+        match (lhs, rhs) {
+            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+                *borrow_mut = borrow_mut.mul_internal(&borrow);
+                Either::Right(borrow_mut)
+            }
+            (lhs, rhs) => Either::Left(lhs.mul_internal(&rhs)),
+        }
+    }
+
+    fn mul_internal(&self, rhs: &Self) -> Self {
+        // try to minimize outer loops
+        if self.data.len() < rhs.data.len() {
+            return rhs.mul_internal(self);
+        }
+        let mut out;
+        if let Some(shortcut) = self
+            .try_mul_by_shift(rhs)
+            .or_else(|| rhs.try_mul_by_shift(self))
+        {
+            out = shortcut;
+        } else {
+            out = Self::default();
+            for (i, rhs_part) in rhs.data.iter().enumerate() {
+                let mut result = std::ops::Mul::mul(self, rhs_part);
+                result <<= i * HalfSizeNative::BITS as usize;
+                out += result;
+            }
+
+            out.recalc_len();
+        }
+        out.bytes *= self.signum() * rhs.signum();
+        out
+    }
     fn mul_at_offset(&self, rhs: HalfSize, i: usize) -> Self {
         let mut out = Self::default();
 
@@ -1166,6 +1188,24 @@ impl BigInt {
         rhs.ilog2().map(|pow| self.abs_clone() << pow)
     }
 }
+
+// no `std::ops::Not`, cause implied zeros to the left would need to be flipped
+implBigMath!(std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
+implBigMath!(
+    std::ops::BitXorAssign,
+    bitxor_assign,
+    std::ops::BitXor,
+    bitxor
+);
+implBigMath!(
+    std::ops::BitAndAssign,
+    bitand_assign,
+    std::ops::BitAnd,
+    bitand
+);
+implBigMath!(std::ops::SubAssign, sub_assign, std::ops::Sub, sub);
+implBigMath!(std::ops::AddAssign, add_assign, std::ops::Add, add);
+implBigMath!(std::ops::MulAssign, mul_assign, std::ops::Mul, mul);
 
 impl std::ops::Mul<&HalfSize> for &BigInt {
     type Output = BigInt;
@@ -1188,65 +1228,7 @@ impl std::ops::Mul<HalfSize> for &BigInt {
     type Output = BigInt;
 
     fn mul(self, rhs: HalfSize) -> Self::Output {
-        self.mul_at_offset(rhs, 0)
-    }
-}
-impl std::ops::Mul<Self> for &BigInt {
-    type Output = BigInt;
-    fn mul(self, rhs: Self) -> Self::Output {
-        if self.data.len() < rhs.data.len() {
-            // try to minimize outer loops
-            return std::ops::Mul::mul(rhs, self);
-        }
-        let mut out;
-        if let Some(shortcut) = self
-            .try_mul_by_shift(rhs)
-            .or_else(|| rhs.try_mul_by_shift(self))
-        {
-            out = shortcut;
-        } else {
-            out = BigInt::default();
-            for (i, rhs_part) in rhs.data.iter().enumerate() {
-                let mut result = std::ops::Mul::mul(self, rhs_part);
-                result <<= i * HalfSizeNative::BITS as usize;
-                out += result;
-            }
-
-            out.recalc_len();
-        }
-        out.bytes *= self.signum() * rhs.signum();
-        out
-    }
-}
-impl std::ops::Mul<Self> for BigInt {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        std::ops::Mul::mul(&self, &rhs)
-    }
-}
-impl std::ops::Mul<&Self> for BigInt {
-    type Output = Self;
-
-    fn mul(self, rhs: &Self) -> Self::Output {
-        std::ops::Mul::mul(&self, rhs)
-    }
-}
-impl std::ops::Mul<BigInt> for &BigInt {
-    type Output = BigInt;
-
-    fn mul(self, rhs: BigInt) -> Self::Output {
         std::ops::Mul::mul(self, &rhs)
-    }
-}
-impl std::ops::MulAssign for BigInt {
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = std::ops::Mul::mul(self as &Self, rhs);
-    }
-}
-impl std::ops::MulAssign<&Self> for BigInt {
-    fn mul_assign(&mut self, rhs: &Self) {
-        *self = std::ops::Mul::mul(self as &Self, rhs);
     }
 }
 
