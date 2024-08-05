@@ -738,25 +738,25 @@ macro_rules! implBigMath {
         }
         impl $($assign_trait)::* for BigInt {
             fn $assign_func(&mut self, rhs: Self) {
-                assert!(BigInt::$func(Boo::from(self), Boo::from(rhs)).is_none(), "did give &mut, shouldn't get result");
+                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_right("did give &mut, shouldn't get result");
             }
         }
         impl $($assign_trait)::*<&Self> for BigInt {
             fn $assign_func(&mut self, rhs: &Self) {
-                assert!(BigInt::$func(Boo::from(self), Boo::from(rhs)).is_none(), "did give &mut, shouldn't get result");
+                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_right("did give &mut, shouldn't get result");
             }
         }
     };
     (body $func:tt, $rhs:tt) => {
         type Output = BigInt;
         fn $func(self, rhs: $rhs) -> Self::Output {
-            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect("didn't give &mut, should get result")
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_left("didn't give &mut, should get result")
         }
     };
     (body $func:tt, &$rhs:tt) => {
         type Output = BigInt;
         fn $func(self, rhs: &$rhs) -> Self::Output {
-            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect("didn't give &mut, should get result")
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_left("didn't give &mut, should get result")
         }
     };
 }
@@ -877,17 +877,95 @@ impl std::ops::ShrAssign<&usize> for BigInt {
     }
 }
 
-implBigMath!(a std::ops::AddAssign, add_assign, std::ops::Add, add);
-impl std::ops::AddAssign<&Self> for BigInt {
-    fn add_assign(&mut self, rhs: &Self) {
-        // consider optimising adding 0
-        if self.is_different_sign(rhs) {
-            self.negate();
-            std::ops::SubAssign::sub_assign(self, rhs);
-            self.negate();
-            return;
+#[allow(clippy::multiple_inherent_impl)]
+impl BigInt {
+    const fn is_different_sign(&self, rhs: &Self) -> bool {
+        !self.is_negative() ^ !rhs.is_negative()
+    }
+
+    fn assert_pair_valid(pair: (&Boo<'_, BigInt>, &Boo<'_, BigInt>)) {
+        assert!(
+            !matches!(pair.0, Boo::BorrowedMut(_)) || !matches!(pair.1, Boo::BorrowedMut(_)),
+            "can't have to Borrow_mut's"
+        );
+    }
+    fn get_mut<'a, 'b: 'a>(either: &'a mut Either<Self, &'b mut Self>) -> &'a mut Self {
+        match either {
+            Either::Left(it) => it,
+            Either::Right(it) => it,
+        }
+    }
+
+    fn return_first<'b, 'b1: 'b, 'b2: 'b>(
+        ret: Boo<'b1, BigInt>,
+        other: Boo<'b2, BigInt>,
+    ) -> Either<Self, &'b mut Self> {
+        match (ret, other) {
+            (Boo::BorrowedMut(ret), _) => Either::Right(ret),
+            (other, Boo::BorrowedMut(ret)) => {
+                *ret = other.cloned();
+                Either::Right(ret)
+            }
+            (ret, _) => Either::Left(ret.cloned()),
+        }
+    }
+    fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+        Self::assert_pair_valid((&lhs, &rhs));
+
+        if lhs.is_zero() {
+            return Self::return_first(rhs, lhs);
+        }
+        if rhs.is_zero() {
+            return Self::return_first(lhs, rhs);
         }
 
+        if lhs.is_different_sign(&rhs) {
+            return match (lhs, rhs) {
+                (lhs, Boo::BorrowedMut(rhs)) => {
+                    rhs.negate();
+                    Self::sub(lhs, rhs)
+                }
+                (Boo::Borrowed(lhs), rhs) => {
+                    let mut owned = rhs.cloned();
+                    owned.negate();
+                    Self::sub(lhs, owned)
+                }
+                (mut lhs, rhs) => {
+                    lhs.try_get_mut().unwrap().negate();
+                    let mut res = Self::sub(Boo::from(lhs), rhs);
+
+                    Self::get_mut(&mut res).negate();
+                    res
+                }
+            };
+        }
+        match (lhs, rhs) {
+            (lhs, Boo::BorrowedMut(rhs)) => {
+                rhs.add_assign_internal(&lhs);
+                Either::Right(rhs)
+            }
+            (Boo::BorrowedMut(lhs), rhs) => {
+                lhs.add_assign_internal(&rhs);
+                Either::Right(lhs)
+            }
+            (lhs, Boo::Owned(mut rhs)) => {
+                rhs.add_assign_internal(&lhs);
+                Either::Left(rhs)
+            }
+            (lhs, Boo::Borrowed(rhs)) => {
+                let mut owned = lhs.cloned();
+                owned.add_assign_internal(&rhs);
+                Either::Left(owned)
+            }
+        }
+    }
+    fn add_assign_internal(&mut self, rhs: &Self) {
         let orig_self_len = self.data.len();
 
         if orig_self_len < rhs.data.len() {
@@ -921,51 +999,46 @@ impl std::ops::AddAssign<&Self> for BigInt {
         }
         self.push(carry);
     }
-}
 
-#[allow(clippy::multiple_inherent_impl)]
-impl BigInt {
-    const fn is_different_sign(&self, rhs: &Self) -> bool {
-        !self.is_negative() ^ !rhs.is_negative()
-    }
-    fn sub<'b1, 'b2, B1, B2>(lhs: B1, rhs: B2) -> Option<Self>
+    fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
+        Self::assert_pair_valid((&lhs, &rhs));
+
+        if lhs.is_zero() {
+            let mut ret = Self::return_first(rhs, lhs);
+            Self::get_mut(&mut ret).negate();
+            return ret;
+        }
+        if rhs.is_zero() {
+            return Self::return_first(lhs, rhs);
+        }
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
-                (Boo::BorrowedMut(_), Boo::BorrowedMut(_)) => panic!("can't have to Borrow_mut's"),
-                (Boo::BorrowedMut(lhs), rhs) => {
-                    lhs.negate();
-                    *lhs += rhs.as_ref();
-                    lhs.negate();
-                    None
-                }
                 (lhs, Boo::BorrowedMut(rhs)) => {
                     rhs.negate();
                     *rhs += lhs.as_ref();
-                    None
+                    Either::Right(rhs)
                 }
-                (Boo::Owned(mut lhs), Boo::Borrowed(rhs)) => {
-                    lhs.negate();
-                    lhs += rhs;
-                    lhs.negate();
-                    Some(lhs)
-                }
-                (Boo::Borrowed(lhs), Boo::Borrowed(rhs)) => {
-                    let mut owned = rhs.clone();
+                (Boo::Borrowed(lhs), rhs) => {
+                    let mut owned = rhs.cloned();
                     owned.negate();
-                    owned += lhs;
-                    Some(owned)
+                    Self::add(lhs, owned)
                 }
-                (lhs, Boo::Owned(mut rhs)) => {
+                (Boo::Owned(lhs), Boo::Owned(mut rhs)) => {
                     rhs.negate();
-                    rhs += lhs.as_ref();
-                    Some(rhs)
+                    Self::add(lhs, rhs)
+                }
+                (mut lhs, rhs) => {
+                    lhs.try_get_mut().unwrap().negate();
+                    let mut res = Self::add(lhs, rhs);
+                    Self::get_mut(&mut res).negate();
+                    res
                 }
             };
         }
@@ -982,24 +1055,23 @@ impl BigInt {
         };
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(_), Boo::BorrowedMut(_)) => panic!("can't have to Borrow_mut's"),
             (Boo::BorrowedMut(lhs), rhs) => {
                 lhs.sub_assign_smaller_same_sign(&rhs);
                 finnish(lhs);
-                None
+                Either::Right(lhs)
             }
             (lhs, Boo::BorrowedMut(borrowed)) => {
                 let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
                 borrowed.sub_assign_smaller_same_sign(&old_rhs);
                 finnish(borrowed);
-                None
+                Either::Right(borrowed)
             }
             (lhs, rhs) => {
                 // can't really use storage in rhs (when existing) because algo can only sub smaller
                 let mut lhs = lhs.cloned();
                 lhs.sub_assign_smaller_same_sign(&rhs);
                 finnish(&mut lhs);
-                Some(lhs)
+                Either::Left(lhs)
             }
         }
     }
@@ -1036,6 +1108,7 @@ impl BigInt {
 }
 
 implBigMath!(std::ops::SubAssign, sub_assign, std::ops::Sub, sub);
+implBigMath!(std::ops::AddAssign, add_assign, std::ops::Add, add);
 
 #[allow(clippy::multiple_inherent_impl)]
 impl BigInt {

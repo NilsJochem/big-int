@@ -39,6 +39,14 @@ impl<'b, T> Boo<'b, T> {
         }
     }
 
+    pub fn try_get_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Boo::Owned(t) => Some(t),
+            Boo::BorrowedMut(t) => Some(t),
+            Boo::Borrowed(_) => None,
+        }
+    }
+
     /// gives an owned instance of `T` by cloning the held reference
     pub fn cloned(self) -> T
     where
