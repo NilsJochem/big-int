@@ -7,7 +7,7 @@ use std::{
 
 use itertools::{Either, Itertools};
 
-use crate::boo::Boo;
+use crate::boo::{Boo, Moo};
 pub mod util_traits {
     use itertools::Either;
 
@@ -738,25 +738,25 @@ macro_rules! implBigMath {
         }
         impl $($assign_trait)::* for BigInt {
             fn $assign_func(&mut self, rhs: Self) {
-                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_right("did give &mut, shouldn't get result");
+                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_mut_ref("did give &mut, shouldn't get result");
             }
         }
         impl $($assign_trait)::*<&Self> for BigInt {
             fn $assign_func(&mut self, rhs: &Self) {
-                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_right("did give &mut, shouldn't get result");
+                BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_mut_ref("did give &mut, shouldn't get result");
             }
         }
     };
     (body $func:tt, $rhs:tt) => {
         type Output = BigInt;
         fn $func(self, rhs: $rhs) -> Self::Output {
-            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_left("didn't give &mut, should get result")
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_owned("didn't give &mut, should get result")
         }
     };
     (body $func:tt, &$rhs:tt) => {
         type Output = BigInt;
         fn $func(self, rhs: &$rhs) -> Self::Output {
-            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_left("didn't give &mut, should get result")
+            BigInt::$func(Boo::from(self), Boo::from(rhs)).expect_owned("didn't give &mut, should get result")
         }
     };
 }
@@ -837,37 +837,18 @@ impl BigInt {
             "can't have to Borrow_mut's"
         );
     }
-    fn get_mut<'a, 'b: 'a>(either: &'a mut Either<Self, &'b mut Self>) -> &'a mut Self {
-        match either {
-            Either::Left(it) => it,
-            Either::Right(it) => it,
-        }
-    }
-    fn either_from_boo(value: Boo<'_, Self>) -> Either<Self, &mut Self> {
-        match value {
-            Boo::BorrowedMut(value) => Either::Right(value),
-            value => Either::Left(value.cloned()),
-        }
-    }
-    #[allow(dead_code)]
-    fn boo_from_either(value: Either<Self, &mut Self>) -> Boo<'_, Self> {
-        match value {
-            Either::Left(owned) => Boo::Owned(owned),
-            Either::Right(borrow) => Boo::BorrowedMut(borrow),
-        }
-    }
 
     fn return_first<'b, 'b1: 'b, 'b2: 'b>(
         ret: Boo<'b1, Self>,
         other: Boo<'b2, Self>,
-    ) -> Either<Self, &'b mut Self> {
+    ) -> Moo<'b, Self> {
         match (ret, other) {
-            (Boo::BorrowedMut(ret), _) => Either::Right(ret),
+            (Boo::BorrowedMut(ret), _) => Moo::BorrowedMut(ret),
             (other, Boo::BorrowedMut(ret)) => {
                 *ret = other.cloned();
-                Either::Right(ret)
+                Moo::BorrowedMut(ret)
             }
-            (ret, _) => Either::Left(ret.cloned()),
+            (ret, _) => Moo::Owned(ret.cloned()),
         }
     }
 
@@ -875,13 +856,13 @@ impl BigInt {
         a: Boo<'b1, Self>,
         b: Boo<'b2, Self>,
         value: Self,
-    ) -> Either<Self, &'b mut Self> {
+    ) -> Moo<'b, Self> {
         match (a, b) {
             (Boo::BorrowedMut(borrow_mut), _) | (_, Boo::BorrowedMut(borrow_mut)) => {
                 *borrow_mut = value;
-                Either::Right(borrow_mut)
+                Moo::BorrowedMut(borrow_mut)
             }
-            (_, _) => Either::Left(value),
+            (_, _) => Moo::Owned(value),
         }
     }
 
@@ -889,7 +870,7 @@ impl BigInt {
         lhs: B1,
         rhs: B2,
         func: impl FnOnce(&mut Self, &Self),
-    ) -> Either<Self, &'b mut Self>
+    ) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -901,22 +882,22 @@ impl BigInt {
         match (lhs, rhs) {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
                 func(borrow_mut, &borrow);
-                Either::Right(borrow_mut)
+                Moo::BorrowedMut(borrow_mut)
             }
             (Boo::Borrowed(lhs), rhs) => {
                 let mut owned = rhs.cloned();
                 func(&mut owned, lhs);
-                Either::Left(owned)
+                Moo::Owned(owned)
             }
             (lhs, rhs) => {
                 let mut owned = lhs.cloned();
                 func(&mut owned, &rhs);
-                Either::Left(owned)
+                Moo::Owned(owned)
             }
         }
     }
 
-    fn bitor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn bitor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -932,7 +913,7 @@ impl BigInt {
             self.extent_length(HALF_SIZE_BYTES as isize);
         }
     }
-    fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -955,7 +936,7 @@ impl BigInt {
         self.recalc_len();
     }
 
-    fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -976,7 +957,7 @@ impl BigInt {
         self.recalc_len();
     }
 
-    fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -1006,7 +987,7 @@ impl BigInt {
                 (mut lhs, rhs) => {
                     lhs.try_get_mut().unwrap().negate();
                     let mut ret = Self::sub(lhs, rhs);
-                    Self::get_mut(&mut ret).negate();
+                    ret.negate();
                     ret
                 }
             };
@@ -1048,7 +1029,7 @@ impl BigInt {
         self.push(carry);
     }
 
-    fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -1059,7 +1040,7 @@ impl BigInt {
 
         if lhs.is_zero() {
             let mut ret = Self::return_first(rhs, lhs);
-            Self::get_mut(&mut ret).negate();
+            ret.negate();
             return ret;
         }
         if rhs.is_zero() {
@@ -1071,7 +1052,7 @@ impl BigInt {
                 (lhs, Boo::BorrowedMut(rhs)) => {
                     rhs.negate();
                     *rhs += lhs.as_ref();
-                    Either::Right(rhs)
+                    Moo::BorrowedMut(rhs)
                 }
                 (Boo::Borrowed(lhs), rhs) => {
                     let mut owned = rhs.cloned();
@@ -1085,7 +1066,7 @@ impl BigInt {
                 (mut lhs, rhs) => {
                     lhs.try_get_mut().unwrap().negate();
                     let mut ret = Self::add(lhs, rhs);
-                    Self::get_mut(&mut ret).negate();
+                    ret.negate();
                     ret
                 }
             };
@@ -1106,20 +1087,20 @@ impl BigInt {
             (Boo::BorrowedMut(lhs), rhs) => {
                 lhs.sub_assign_smaller_same_sign(&rhs);
                 finnish(lhs);
-                Either::Right(lhs)
+                Moo::BorrowedMut(lhs)
             }
             (lhs, Boo::BorrowedMut(borrowed)) => {
                 let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
                 borrowed.sub_assign_smaller_same_sign(&old_rhs);
                 finnish(borrowed);
-                Either::Right(borrowed)
+                Moo::BorrowedMut(borrowed)
             }
             (lhs, rhs) => {
                 // can't really use storage in rhs (when existing) because algo can only sub smaller
                 let mut lhs = lhs.cloned();
                 lhs.sub_assign_smaller_same_sign(&rhs);
                 finnish(&mut lhs);
-                Either::Left(lhs)
+                Moo::Owned(lhs)
             }
         }
     }
@@ -1154,7 +1135,7 @@ impl BigInt {
         self.recalc_len();
     }
 
-    fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Either<Self, &'b mut Self>
+    fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -1168,33 +1149,35 @@ impl BigInt {
         }
 
         if rhs.is_abs_one() {
-            let mut either = Self::either_from_boo(lhs);
-            Self::get_mut(&mut either).bytes *= rhs.signum();
+            let mut either = Moo::<Self>::from(lhs);
+            either.bytes *= rhs.signum();
             return either;
         }
         if lhs.is_abs_one() {
-            let mut either = Self::either_from_boo(rhs);
-            Self::get_mut(&mut either).bytes *= lhs.signum();
+            let mut either = Moo::<Self>::from(rhs);
+            either.bytes *= lhs.signum();
             return either;
         }
 
         if let Some(pow) = rhs.ilog2() {
-            let mut either = Self::either_from_boo(lhs);
-            *Self::get_mut(&mut either) <<= &pow;
+            let mut either = Moo::<Self>::from(lhs);
+            *either <<= &pow;
+            either.bytes *= rhs.signum();
             return either;
         }
         if let Some(pow) = lhs.ilog2() {
-            let mut either = Self::either_from_boo(rhs);
-            *Self::get_mut(&mut either) <<= &pow;
+            let mut either = Moo::<Self>::from(rhs);
+            *either <<= &pow;
+            either.bytes *= lhs.signum();
             return either;
         }
 
         match (lhs, rhs) {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
                 *borrow_mut = borrow_mut.mul_internal(&borrow);
-                Either::Right(borrow_mut)
+                Moo::BorrowedMut(borrow_mut)
             }
-            (lhs, rhs) => Either::Left(lhs.mul_internal(&rhs)),
+            (lhs, rhs) => Moo::Owned(lhs.mul_internal(&rhs)),
         }
     }
 
