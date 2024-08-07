@@ -262,6 +262,7 @@ pub mod mul {
 mod tests {
     use super::*;
 
+    #[allow(clippy::needless_pass_by_value)]
     fn can_shorcut<M>(
         lhs: impl Into<BigInt>,
         rhs: impl Into<BigInt>,
@@ -292,7 +293,7 @@ mod tests {
             |lhs, rhs| M::do_shortcut(lhs, rhs, sc.clone()),
             result,
             op_dbg,
-        )
+        );
     }
     fn test_shorcut_commte<M, S: Side>(
         lhs: impl Into<BigInt>,
@@ -310,7 +311,7 @@ mod tests {
             |lhs, rhs| M::do_shortcut(lhs, rhs, sc.clone()),
             result,
             op_dbg,
-        )
+        );
     }
 
     mod t_add {

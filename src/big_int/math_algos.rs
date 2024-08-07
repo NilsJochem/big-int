@@ -165,15 +165,13 @@ mod tests {
         fn both_big_naive() {
             assert_eq!(
                 mul::naive(
-                    &BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128),
-                    &BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128)
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
                 ),
-                [
-                    0x33432fd716ccd7135f999f4e85210000u128,
-                    0xffddbcbf06b5eed38628ddc706bf1222u128,
-                ]
-                .into_iter()
-                .collect::<BigInt>()
+                BigInt::from_iter([
+                    0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
+                    0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                ])
             );
         }
     }
@@ -183,38 +181,38 @@ mod tests {
         #[test]
         fn add_smaller() {
             let mut lhs = BigInt::from_iter([
-                0x00000000u32,
-                0x00000000,
-                0x00000000,
-                0xf5d28c00,
-                0xb17e4b17,
-                0x7e4b17e4,
-                0x4b17e4b1,
-                0xffddbcbe,
+                0x0000_0000_u32,
+                0x0000_0000,
+                0x0000_0000,
+                0xf5d2_8c00,
+                0xb17e_4b17,
+                0x7e4b_17e4,
+                0x4b17_e4b1,
+                0xffdd_bcbe,
             ]);
             add::assign_same_sign(
                 &mut lhs,
                 &BigInt::from_iter([
-                    0x00000000u32,
-                    0x00000000,
-                    0xd0420800,
-                    0x07f6e5d4,
-                    0x4c3b2a19,
-                    0x907f6e5d,
-                    0x907f6e5d,
+                    0x0000_0000_u32,
+                    0x0000_0000,
+                    0xd042_0800,
+                    0x07f6_e5d4,
+                    0x4c3b_2a19,
+                    0x907f_6e5d,
+                    0x907f_6e5d,
                 ]),
             );
             assert_eq!(
                 lhs,
                 BigInt::from_iter([
-                    0x00000000u32,
-                    0x00000000,
-                    0xd0420800,
-                    0xfdc971d4,
-                    0xfdb97530,
-                    0x0eca8641,
-                    0xdb97530f,
-                    0xffddbcbe,
+                    0x0000_0000_u32,
+                    0x0000_0000,
+                    0xd042_0800,
+                    0xfdc9_71d4,
+                    0xfdb9_7530,
+                    0x0eca_8641,
+                    0xdb97_530f,
+                    0xffdd_bcbe,
                 ])
             );
         }
@@ -223,7 +221,7 @@ mod tests {
         fn assign_to_zero() {
             let mut lhs = BigInt::from(0);
             add::assign_same_sign(&mut lhs, &BigInt::from(1));
-            assert_eq!(lhs, BigInt::from(1))
+            assert_eq!(lhs, BigInt::from(1));
         }
     }
 }

@@ -155,7 +155,7 @@ mod tests {
             Iter: IntoIterator<Item = u64>,
             Iter::IntoIter: 'static,
         {
-            Self(Box::new(data.into_iter().flat_map(|it| it.to_ne_bytes())))
+            Self(Box::new(data.into_iter().flat_map(u64::to_ne_bytes)))
         }
     }
     impl CryptoRng for MockRandom {}
@@ -173,12 +173,12 @@ mod tests {
         }
 
         fn fill_bytes(&mut self, dest: &mut [u8]) {
-            self.try_fill_bytes(dest).unwrap()
+            self.try_fill_bytes(dest).unwrap();
         }
 
         fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
             for byte in dest.iter_mut() {
-                *byte = self.0.next().ok_or(rand::Error::new(NoMoreData))?;
+                *byte = self.0.next().ok_or_else(|| rand::Error::new(NoMoreData))?;
             }
             Ok(())
         }
@@ -197,7 +197,7 @@ mod tests {
                     Point::new(7, 6, 17),
                     it,
                     "Bob calculated the wrong intermediate"
-                )
+                );
             },
         );
         assert_eq!(Point::new(13, 7, 17), key, "Bob calculated the wrong key");
@@ -211,7 +211,7 @@ mod tests {
                     Point::new(10, 6, 17),
                     it,
                     "Alice calculated the wrong intermediate"
-                )
+                );
             },
         );
         assert_eq!(Point::new(13, 7, 17), key, "Alice calculated the wrong key");
@@ -279,6 +279,6 @@ mod tests {
                 1,
                 17
             )
-        )
+        );
     }
 }

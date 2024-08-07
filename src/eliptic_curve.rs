@@ -181,12 +181,12 @@ mod tests {
     #[test]
     fn double() {
         let curve = ElipticCurve::new(2, 2, 17);
-        assert_eq!(Point::new(6, 3, 17), curve.double(Point::new(5, 1, 17)))
+        assert_eq!(Point::new(6, 3, 17), curve.double(Point::new(5, 1, 17)));
     }
     #[test]
     fn mul() {
         let curve = ElipticCurve::new(2, 2, 17);
-        assert_eq!(Point::new(7, 6, 17), curve.scale(Point::new(5, 1, 17), 9))
+        assert_eq!(Point::new(7, 6, 17), curve.scale(Point::new(5, 1, 17), 9));
     }
     #[test]
     fn add() {
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(
             Point::new(9, 16, 17),
             curve.add(Point::new(5, 1, 17), Point::new(3, 1, 17))
-        )
+        );
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
                 .generate(Point::new(5, 1, 17))
                 .take(20)
                 .collect::<Vec<_>>()
-        )
+        );
     }
 
     #[test]
@@ -241,6 +241,6 @@ mod tests {
                 cofactor: 1.0
             }),
             gen
-        )
+        );
     }
 }

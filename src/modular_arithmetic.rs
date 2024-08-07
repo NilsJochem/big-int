@@ -208,6 +208,6 @@ mod tests {
         assert_eq!(
             Some(Number::from_u64(9, 17)),
             Number::from_u64(2, 17).mul_inverse()
-        )
+        );
     }
 }
