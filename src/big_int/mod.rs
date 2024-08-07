@@ -826,6 +826,30 @@ impl std::ops::ShrAssign<&usize> for BigInt {
     }
 }
 
+trait TieBreaker {
+    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>);
+}
+struct TieSmaller;
+impl TieBreaker for TieSmaller {
+    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>) {
+        if *lhs <= *rhs {
+            (lhs.cloned(), rhs)
+        } else {
+            (rhs.cloned(), lhs)
+        }
+    }
+}
+struct TieBigger;
+impl TieBreaker for TieBigger {
+    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>) {
+        if *lhs > *rhs {
+            (lhs.cloned(), rhs)
+        } else {
+            (rhs.cloned(), lhs)
+        }
+    }
+}
+
 #[allow(clippy::multiple_inherent_impl)]
 impl BigInt {
     const fn is_different_sign(&self, rhs: &Self) -> bool {
@@ -839,7 +863,7 @@ impl BigInt {
         );
     }
 
-    fn refer_direct<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+    fn refer_direct<'b, 'b1: 'b, 'b2: 'b, B1, B2, T>(
         lhs: B1,
         rhs: B2,
         func: impl FnOnce(&mut Self, &Self),
@@ -847,6 +871,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        T: TieBreaker,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -857,14 +882,14 @@ impl BigInt {
                 func(borrow_mut, &borrow);
                 Moo::BorrowedMut(borrow_mut)
             }
-            (Boo::Borrowed(lhs), rhs) => {
-                let mut owned = rhs.cloned();
-                func(&mut owned, lhs);
+            (Boo::Borrowed(borrowed), Boo::Owned(mut owned))
+            | (Boo::Owned(mut owned), Boo::Borrowed(borrowed)) => {
+                func(&mut owned, borrowed);
                 Moo::Owned(owned)
             }
             (lhs, rhs) => {
-                let mut owned = lhs.cloned();
-                func(&mut owned, &rhs);
+                let (mut owned, borrowed) = T::decide(lhs, rhs);
+                func(&mut owned, &borrowed);
                 Moo::Owned(owned)
             }
         }
@@ -875,14 +900,22 @@ impl BigInt {
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, math_algos::bit::bit_or_assign_internal)
+        Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
+            lhs,
+            rhs,
+            math_algos::bit_math::bit_or_assign,
+        )
     }
     fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, math_algos::bit::bit_xor_assign_internal)
+        Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
+            lhs,
+            rhs,
+            math_algos::bit_math::bit_xor_assign,
+        )
     }
 
     fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -890,7 +923,11 @@ impl BigInt {
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, math_algos::bit::bit_and_assign_internal)
+        Self::refer_direct::<'_, '_, '_, _, _, TieSmaller>(
+            lhs,
+            rhs,
+            math_algos::bit_math::bit_and_assign,
+        )
     }
 
     fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -906,24 +943,29 @@ impl BigInt {
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
-                (lhs, Boo::BorrowedMut(rhs)) => {
+                (Boo::Borrowed(lhs), rhs) => {
+                    let mut either = Moo::<Self>::from(rhs);
+                    either.negate();
+                    Self::sub(lhs, either)
+                }
+                (Boo::Owned(lhs), Boo::Owned(mut rhs)) => {
                     rhs.negate();
                     Self::sub(lhs, rhs)
                 }
-                (Boo::Borrowed(lhs), rhs) => {
-                    let mut owned = rhs.cloned();
-                    owned.negate();
-                    Self::sub(lhs, owned)
-                }
-                (mut lhs, rhs) => {
-                    lhs.try_get_mut().unwrap().negate();
-                    let mut ret = Self::sub(lhs, rhs);
-                    ret.negate();
-                    ret
+                (lhs, rhs) => {
+                    let mut either = Moo::<Self>::from(lhs);
+                    either.negate();
+                    either = Self::sub(either, rhs);
+                    either.negate();
+                    either
                 }
             };
         }
-        Self::refer_direct(lhs, rhs, math_algos::add::assign_internal)
+        Self::refer_direct::<'_, '_, '_, _, _, TieSmaller>(
+            lhs,
+            rhs,
+            math_algos::add::assign_same_sign,
+        )
     }
 
     fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -939,60 +981,50 @@ impl BigInt {
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
-                (lhs, Boo::BorrowedMut(rhs)) => {
-                    rhs.negate();
-                    *rhs += lhs.as_ref();
-                    Moo::BorrowedMut(rhs)
-                }
                 (Boo::Borrowed(lhs), rhs) => {
-                    let mut owned = rhs.cloned();
-                    owned.negate();
-                    Self::add(lhs, owned)
+                    let mut either = Moo::<Self>::from(rhs);
+                    either.negate();
+                    Self::add(lhs, either)
                 }
                 (Boo::Owned(lhs), Boo::Owned(mut rhs)) => {
                     rhs.negate();
                     Self::add(lhs, rhs)
                 }
-                (mut lhs, rhs) => {
-                    lhs.try_get_mut().unwrap().negate();
-                    let mut ret = Self::add(lhs, rhs);
-                    ret.negate();
-                    ret
+                (lhs, rhs) => {
+                    let mut either = Moo::<Self>::from(lhs);
+                    either.negate();
+                    either = Self::add(either, rhs);
+                    either.negate();
+                    either
                 }
             };
         }
 
-        let (lhs, rhs, need_negate) = if lhs.abs_ord(&rhs).is_lt() {
-            (rhs, lhs, true)
+        let (lhs, rhs, signum) = if lhs.abs_ord(&rhs).is_lt() {
+            (rhs, lhs, -1)
         } else {
-            (lhs, rhs, false)
-        };
-        let finnish = |it: &mut Self| {
-            if need_negate {
-                it.negate();
-            }
+            (lhs, rhs, 1)
         };
 
-        match (lhs, rhs) {
+        let mut either = match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
                 math_algos::sub::assign_smaller_same_sign(lhs, &rhs);
-                finnish(lhs);
                 Moo::BorrowedMut(lhs)
             }
             (lhs, Boo::BorrowedMut(borrowed)) => {
                 let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
                 math_algos::sub::assign_smaller_same_sign(borrowed, &old_rhs);
-                finnish(borrowed);
                 Moo::BorrowedMut(borrowed)
             }
             (lhs, rhs) => {
                 // can't really use storage in rhs (when existing) because algo can only sub smaller
                 let mut lhs = lhs.cloned();
                 math_algos::sub::assign_smaller_same_sign(&mut lhs, &rhs);
-                finnish(&mut lhs);
                 Moo::Owned(lhs)
             }
-        }
+        };
+        either.bytes *= signum;
+        either
     }
 
     fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -1467,7 +1499,7 @@ mod tests {
         }
 
         #[test]
-        fn sub() {
+        fn sub_big() {
             assert_eq!(
                 BigInt::from(0x9999_9999_9999_9999i128) - BigInt::from(0x88776655_44332211i128),
                 BigInt::from(0x11223344_55667788i128)
@@ -1476,6 +1508,11 @@ mod tests {
                 BigInt::from(0x9999_9999_9999_9999i128) + BigInt::from(-0x88776655_44332211i128),
                 BigInt::from(0x11223344_55667788i128)
             );
+        }
+        #[test]
+        fn sub_sign() {
+            assert_eq!(BigInt::from(1) - BigInt::from(2), BigInt::from(-1));
+            assert_eq!(BigInt::from(-1) - BigInt::from(-2), BigInt::from(1));
         }
         #[test]
         fn sub_overflow() {

@@ -1,9 +1,10 @@
+#![allow(clippy::wildcard_imports)]
 use super::*;
 use itertools::Itertools;
 
-pub mod bit {
+pub mod bit_math {
     use super::*;
-    pub fn bit_or_assign_internal(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_or_assign(lhs: &mut BigInt, rhs: &BigInt) {
         for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
             std::ops::BitOrAssign::bitor_assign(part, rhs);
         }
@@ -13,7 +14,7 @@ pub mod bit {
         }
     }
 
-    pub fn bit_xor_assign_internal(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_xor_assign(lhs: &mut BigInt, rhs: &BigInt) {
         for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
             std::ops::BitXorAssign::bitxor_assign(part, rhs);
         }
@@ -29,7 +30,7 @@ pub mod bit {
         lhs.recalc_len();
     }
 
-    pub fn bit_and_assign_internal(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_and_assign(lhs: &mut BigInt, rhs: &BigInt) {
         for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
             std::ops::BitAndAssign::bitand_assign(part, rhs);
         }
@@ -47,7 +48,11 @@ pub mod bit {
 pub mod add {
     use super::*;
 
-    pub fn assign_internal(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn assign_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
+        assert!(
+            lhs.is_zero() || rhs.is_zero() || lhs.signum() == rhs.signum(),
+            "lhs and rhs had differend signs"
+        );
         let orig_self_len = lhs.data.len();
 
         if orig_self_len < rhs.data.len() {
@@ -87,7 +92,10 @@ pub mod sub {
     use super::*;
 
     pub fn assign_smaller_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
-        assert!(!lhs.is_different_sign(rhs), "lhs has different sign as rhs");
+        assert!(
+            lhs.is_zero() || rhs.is_zero() || lhs.signum() == rhs.signum(),
+            "lhs and rhs had differend signs"
+        );
         assert!(lhs.abs_ord(rhs).is_ge(), "lhs is smaller than rhs");
 
         let mut carry = false;
