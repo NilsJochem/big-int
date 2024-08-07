@@ -6,6 +6,7 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
+use math_shortcuts::MathShortcut;
 
 use crate::boo::{Boo, Moo};
 pub mod util_traits {
@@ -838,34 +839,6 @@ impl BigInt {
         );
     }
 
-    fn return_first<'b, 'b1: 'b, 'b2: 'b>(
-        ret: Boo<'b1, Self>,
-        other: Boo<'b2, Self>,
-    ) -> Moo<'b, Self> {
-        match (ret, other) {
-            (Boo::BorrowedMut(ret), _) => Moo::BorrowedMut(ret),
-            (other, Boo::BorrowedMut(ret)) => {
-                *ret = other.cloned();
-                Moo::BorrowedMut(ret)
-            }
-            (ret, _) => Moo::Owned(ret.cloned()),
-        }
-    }
-
-    fn return_any<'b, 'b1: 'b, 'b2: 'b>(
-        a: Boo<'b1, Self>,
-        b: Boo<'b2, Self>,
-        value: Self,
-    ) -> Moo<'b, Self> {
-        match (a, b) {
-            (Boo::BorrowedMut(borrow_mut), _) | (_, Boo::BorrowedMut(borrow_mut)) => {
-                *borrow_mut = value;
-                Moo::BorrowedMut(borrow_mut)
-            }
-            (_, _) => Moo::Owned(value),
-        }
-    }
-
     fn refer_direct<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
@@ -966,12 +939,9 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        if lhs.is_zero() {
-            return Self::return_first(rhs, lhs);
-        }
-        if rhs.is_zero() {
-            return Self::return_first(lhs, rhs);
-        }
+        math_shortcuts::try_all!(lhs, rhs,
+            flip math_shortcuts::add::ByZero,
+        );
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
@@ -1038,14 +1008,7 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        if lhs.is_zero() {
-            let mut ret = Self::return_first(rhs, lhs);
-            ret.negate();
-            return ret;
-        }
-        if rhs.is_zero() {
-            return Self::return_first(lhs, rhs);
-        }
+        math_shortcuts::try_all!(lhs, rhs, math_shortcuts::sub::ByZero,);
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
@@ -1144,33 +1107,11 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        if lhs.is_zero() || rhs.is_zero() {
-            return Self::return_any(lhs, rhs, Self::default());
-        }
-
-        if rhs.is_abs_one() {
-            let mut either = Moo::<Self>::from(lhs);
-            either.bytes *= rhs.signum();
-            return either;
-        }
-        if lhs.is_abs_one() {
-            let mut either = Moo::<Self>::from(rhs);
-            either.bytes *= lhs.signum();
-            return either;
-        }
-
-        if let Some(pow) = rhs.ilog2() {
-            let mut either = Moo::<Self>::from(lhs);
-            *either <<= &pow;
-            either.bytes *= rhs.signum();
-            return either;
-        }
-        if let Some(pow) = lhs.ilog2() {
-            let mut either = Moo::<Self>::from(rhs);
-            *either <<= &pow;
-            either.bytes *= lhs.signum();
-            return either;
-        }
+        math_shortcuts::try_all!(lhs, rhs,
+            flip math_shortcuts::mul::ByZero,
+            flip math_shortcuts::mul::ByOne,
+            flip math_shortcuts::mul::ByPowerOfTwo,
+        );
 
         match (lhs, rhs) {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
@@ -1213,6 +1154,8 @@ impl BigInt {
         out
     }
 }
+
+mod math_shortcuts;
 
 // no `std::ops::Not`, cause implied zeros to the left would need to be flipped
 implBigMath!(std::ops::BitOrAssign, bitor_assign, std::ops::BitOr, bitor);
