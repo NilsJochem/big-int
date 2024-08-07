@@ -230,9 +230,9 @@ pub mod mul {
             rhs: Boo<'b, BigInt>,
             (): Self::SC,
         ) -> Moo<'b, BigInt> {
-            let signum = rhs.signum();
+            let signum = rhs.signum;
             let mut either = super::get_lhs(lhs, rhs);
-            either.bytes *= signum;
+            either.signum *= signum;
             either
         }
     }
@@ -249,9 +249,9 @@ pub mod mul {
             rhs: Boo<'b, BigInt>,
             pow: Self::SC,
         ) -> Moo<'b, BigInt> {
-            let signum = rhs.signum();
+            let signum = rhs.signum;
             let mut either = super::get_lhs(lhs, rhs);
-            either.bytes *= signum;
+            either.signum *= signum;
             *either <<= &pow;
             either
         }

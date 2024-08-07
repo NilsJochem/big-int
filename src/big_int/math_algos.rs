@@ -10,7 +10,6 @@ pub mod bit_math {
         }
         if lhs.data.len() < rhs.data.len() {
             lhs.data.extend(rhs.data.iter().dropping(lhs.data.len()));
-            lhs.extent_length(HALF_SIZE_BYTES as isize);
         }
     }
 
@@ -25,7 +24,6 @@ pub mod bit_math {
                     .dropping(lhs.data.len())
                     .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
             );
-            lhs.extent_length(HALF_SIZE_BYTES as isize);
         }
         lhs.recalc_len();
     }
@@ -58,7 +56,6 @@ pub mod add {
         if orig_self_len < rhs.data.len() {
             lhs.data
                 .extend(rhs.data.iter().skip(orig_self_len).copied());
-            lhs.bytes = rhs.bytes;
         }
 
         let mut carry = HalfSize::default();
@@ -85,6 +82,10 @@ pub mod add {
             carry = result.higher();
         }
         lhs.push(carry);
+        if lhs.is_zero() {
+            lhs.signum = rhs.signum
+        }
+        lhs.recalc_len()
     }
 }
 
@@ -131,17 +132,17 @@ pub mod mul {
             return naive(rhs, lhs);
         }
         let mut out = BigInt::default();
-        for (i, rhs_part) in rhs.data.iter().enumerate() {
+        for (i, rhs_part) in rhs.data.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs, rhs_part);
             result <<= i * HalfSizeNative::BITS as usize;
             out += result;
         }
 
+        out.signum = lhs.signum * rhs.signum;
         out.recalc_len();
-        out.bytes *= lhs.signum() * rhs.signum();
         out
     }
-    pub fn part_at_offset(lhs: &BigInt, rhs: HalfSize, i: usize) -> BigInt {
+    pub fn part_at_offset_abs(lhs: &BigInt, rhs: HalfSize, i: usize) -> BigInt {
         let mut out = BigInt::default();
 
         let mut carry = HalfSize::default();
@@ -153,7 +154,80 @@ pub mod mul {
             out.data.push(add_result.lower());
         }
         out.data.push(carry);
+        out.signum = SigNum::Positive;
         out.recalc_len();
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    mod t_mul {
+        use super::super::*;
+
+        #[test]
+        fn both_big_naive() {
+            assert_eq!(
+                mul::naive(
+                    &BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128),
+                    &BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128)
+                ),
+                [
+                    0x33432fd716ccd7135f999f4e85210000u128,
+                    0xffddbcbf06b5eed38628ddc706bf1222u128,
+                ]
+                .into_iter()
+                .collect::<BigInt>()
+            );
+        }
+    }
+    mod t_add {
+        use super::super::*;
+
+        #[test]
+        fn add_smaller() {
+            let mut lhs = BigInt::from_iter([
+                0x00000000u32,
+                0x00000000,
+                0x00000000,
+                0xf5d28c00,
+                0xb17e4b17,
+                0x7e4b17e4,
+                0x4b17e4b1,
+                0xffddbcbe,
+            ]);
+            add::assign_same_sign(
+                &mut lhs,
+                &BigInt::from_iter([
+                    0x00000000u32,
+                    0x00000000,
+                    0xd0420800,
+                    0x07f6e5d4,
+                    0x4c3b2a19,
+                    0x907f6e5d,
+                    0x907f6e5d,
+                ]),
+            );
+            assert_eq!(
+                lhs,
+                BigInt::from_iter([
+                    0x00000000u32,
+                    0x00000000,
+                    0xd0420800,
+                    0xfdc971d4,
+                    0xfdb97530,
+                    0x0eca8641,
+                    0xdb97530f,
+                    0xffddbcbe,
+                ])
+            );
+        }
+
+        #[test]
+        fn assign_to_zero() {
+            let mut lhs = BigInt::from(0);
+            add::assign_same_sign(&mut lhs, &BigInt::from(1));
+            assert_eq!(lhs, BigInt::from(1))
+        }
     }
 }

@@ -446,11 +446,82 @@ implHalfMath!(std::ops::BitXor, bitxor);
 implHalfMath!(a std::ops::BitAndAssign, bitand_assign);
 implHalfMath!(std::ops::BitAnd, bitand);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SigNum {
+    Negative,
+    Zero,
+    Positive,
+}
+impl Default for SigNum {
+    fn default() -> Self {
+        Self::Zero
+    }
+}
+impl From<SigNum> for i8 {
+    fn from(value: SigNum) -> Self {
+        value.into_i8()
+    }
+}
+impl SigNum {
+    const fn into_i8(self) -> i8 {
+        match self {
+            Self::Positive => 1,
+            Self::Negative => -1,
+            Self::Zero => 0,
+        }
+    }
+    const fn is_negative(self) -> bool {
+        self.into_i8().is_negative()
+    }
+    const fn is_positive(self) -> bool {
+        self.into_i8().is_positive()
+    }
+    const fn is_zero(self) -> bool {
+        matches!(self, Self::Zero)
+    }
+    const fn negate(self) -> Self {
+        match self {
+            Self::Positive => Self::Negative,
+            Self::Zero => Self::Zero,
+            Self::Negative => Self::Positive,
+        }
+    }
+    const fn abs(self) -> Self {
+        match self {
+            Self::Positive | Self::Negative => Self::Positive,
+            Self::Zero => Self::Zero,
+        }
+    }
+}
+impl std::ops::Neg for SigNum {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negate()
+    }
+}
+impl std::ops::Mul for SigNum {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Self::Zero, _) | (_, Self::Zero) => Self::Zero,
+            (Self::Negative, Self::Negative) => Self::Positive,
+            (Self::Positive, other) | (other, Self::Positive) => other,
+        }
+    }
+}
+impl std::ops::MulAssign for SigNum {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs
+    }
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct BigInt {
     /// used to encode the length in bytes, the number of patial bytes in the last element and the sign of the number
     /// `abs()` can be any of `data.len()` * `HALF_SIZE_BYTES` - 3 and `data.len()` * `HALF_SIZE_BYTES`
-    bytes: isize,
+    signum: SigNum,
     /// holds the `HalfSize` values in LE order
     data: Vec<HalfSize>,
 }
@@ -459,7 +530,7 @@ impl std::fmt::Debug for BigInt {
         write!(
             f,
             "Number {{ {} 0x[",
-            if self.is_positive() { '+' } else { '-' },
+            if !self.is_negative() { '+' } else { '-' },
         )?;
         for (pos, elem) in self.data.iter().rev().with_position() {
             write!(f, "{elem:08x}")?; // TODO hardcoded size
@@ -470,7 +541,7 @@ impl std::fmt::Debug for BigInt {
                 f.write_str(", ")?;
             }
         }
-        write!(f, "] , {} }}", self.bytes)
+        write!(f, "]}}")
     }
 }
 // impl std::fmt::Display for BigInt {
@@ -508,11 +579,26 @@ impl std::fmt::UpperHex for BigInt {
 impl<P: util_traits::UNum> FromIterator<P> for BigInt {
     /// the iter should contain the parts in little endian order
     fn from_iter<T: IntoIterator<Item = P>>(iter: T) -> Self {
+        let binding = iter
+            .into_iter()
+            .flat_map(util_traits::Primitive::to_le_bytes)
+            .chunks(HALF_SIZE_BYTES);
+
         let mut num = Self::default();
-        num.extend(
-            iter.into_iter()
-                .flat_map(util_traits::Primitive::to_le_bytes),
-        );
+        binding
+            .into_iter()
+            .map(|chunk| {
+                let mut buf = [0; HALF_SIZE_BYTES];
+
+                for (place, byte) in buf.iter_mut().zip(chunk) {
+                    *place = byte;
+                }
+                buf
+            })
+            .for_each(|next| num.data.push(next.into()));
+
+        num.signum = SigNum::Positive;
+        num.recalc_len();
         num
     }
 }
@@ -532,55 +618,19 @@ impl<N: util_traits::Primitive> From<N> for BigInt {
     }
 }
 
-impl Extend<u8> for BigInt {
-    fn extend<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
-        let partial = self.partial();
-        let mut iter = iter.into_iter();
-
-        if partial != 0 {
-            let last = self
-                .data
-                .last_mut()
-                .expect("couldn't find last Halfsize, even if length was non zero");
-            for (i, byte) in (partial..HALF_SIZE_BYTES).zip(iter.by_ref()) {
-                last[i] = byte;
-            }
-            self.extent_length(HALF_SIZE_BYTES as isize - partial as isize);
-        }
-
-        self.extend_whole_unchecked(iter.chunks(HALF_SIZE_BYTES).into_iter().map(|chunk| {
-            let mut buf = [0; HALF_SIZE_BYTES];
-
-            for (place, byte) in buf.iter_mut().zip(chunk) {
-                *place = byte;
-            }
-            buf
-        }));
-    }
-}
-impl<HSN: Into<HalfSize>> Extend<HSN> for BigInt {
-    fn extend<T: IntoIterator<Item = HSN>>(&mut self, iter: T) {
-        if self.partial() != 0 {
-            self.extend(iter.into_iter().flat_map(|it| it.into().le_bytes()));
-        } else {
-            self.extend_whole_unchecked(iter);
-        }
-    }
-}
-
 impl BigInt {
     pub const fn is_negative(&self) -> bool {
-        self.bytes.is_negative()
+        self.signum.is_negative()
     }
     pub const fn is_positive(&self) -> bool {
-        self.bytes.is_positive()
+        self.signum.is_positive()
     }
-    pub const fn signum(&self) -> isize {
-        self.bytes.signum()
+    pub const fn signum(&self) -> i8 {
+        self.signum.into_i8()
     }
 
     pub const fn is_zero(&self) -> bool {
-        self.bytes == 0
+        self.signum.is_zero()
     }
     pub fn is_abs_one(&self) -> bool {
         self.data.len() == 1 && *self.data[0] == 1
@@ -597,56 +647,14 @@ impl BigInt {
         canditate
     }
 
-    // number of partial bytes in the last `HalfSize`
-    const fn partial(&self) -> usize {
-        self.bytes.unsigned_abs() % HALF_SIZE_BYTES
-    }
-    // number of missing bytes in the last `HalfSize`, to have no partial remaining
-    #[allow(dead_code)]
-    const fn co_partial(&self) -> usize {
-        (-self.bytes.abs()).rem_euclid(HALF_SIZE_BYTES as isize) as usize
-    }
-
-    /// extends the number with the given Halfsizes. Assumes, that no partial bytes exist
-    fn extend_whole_unchecked<HSN, T>(&mut self, iter: T)
-    where
-        HSN: Into<HalfSize>,
-        T: IntoIterator<Item = HSN>,
-    {
-        for next in iter {
-            self.data.push(next.into());
-            self.extent_length(HALF_SIZE_BYTES as isize);
-        }
-
-        self.recalc_len();
-    }
-    fn extent_length(&mut self, offset: isize) {
-        assert!(
-            offset.is_positive() || self.bytes.abs() >= offset.abs(),
-            "tried to remove to many elements"
-        );
-        if self.bytes.is_negative() {
-            self.bytes -= offset;
-        } else {
-            self.bytes += offset;
-        }
-    }
-
     fn recalc_len(&mut self) {
         while self.data.last().is_some_and(|&it| *it == 0) {
-            self.pop();
+            self.data.pop();
         }
-        self.bytes =
-            (self.data.len() * HALF_SIZE_BYTES) as isize * (!self.is_negative() as isize * 2 - 1);
-
-        if let Some(last) = self.data.last() {
-            self.extent_length(
-                -(last
-                    .be_bytes()
-                    .into_iter()
-                    .take_while(|&it| it == 0)
-                    .count() as isize),
-            );
+        if self.data.is_empty() {
+            self.signum = SigNum::Zero
+        } else {
+            assert!(!self.signum.is_zero(), "found {self:?} with Signnum::Zero");
         }
     }
 
@@ -664,10 +672,10 @@ impl BigInt {
     }
 
     pub fn negate(&mut self) {
-        self.bytes = std::ops::Neg::neg(self.bytes);
+        self.signum = -self.signum;
     }
     pub fn abs(&mut self) {
-        self.bytes = self.bytes.abs();
+        self.signum = self.signum.abs();
     }
     #[must_use]
     pub fn abs_clone(&self) -> Self {
@@ -688,7 +696,7 @@ impl PartialOrd for BigInt {
 impl Ord for BigInt {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering as O;
-        match self.bytes.cmp(&other.bytes) {
+        match self.signum.cmp(&other.signum) {
             O::Less => O::Less,
             O::Greater => O::Greater,
             O::Equal => self.abs_ord(other),
@@ -1001,9 +1009,9 @@ impl BigInt {
         }
 
         let (lhs, rhs, signum) = if lhs.abs_ord(&rhs).is_lt() {
-            (rhs, lhs, -1)
+            (rhs, lhs, SigNum::Negative)
         } else {
-            (lhs, rhs, 1)
+            (lhs, rhs, SigNum::Positive)
         };
 
         let mut either = match (lhs, rhs) {
@@ -1023,7 +1031,7 @@ impl BigInt {
                 Moo::Owned(lhs)
             }
         };
-        either.bytes *= signum;
+        either.signum *= signum;
         either
     }
 
@@ -1089,7 +1097,7 @@ impl std::ops::Mul<&HalfSize> for &BigInt {
             }
             _ => {}
         }
-        math_algos::mul::part_at_offset(self, *rhs, 0)
+        math_algos::mul::part_at_offset_abs(self, *rhs, 0)
     }
 }
 impl std::ops::Mul<HalfSize> for &BigInt {
@@ -1106,83 +1114,11 @@ mod tests {
     mod create {
         use super::*;
         #[test]
-        fn extend_only_partial() {
-            let mut num = BigInt {
-                bytes: 1,
-                data: vec![HalfSize::from(0x11)],
-            };
-            num.extend(0x3322u16.to_le_bytes());
-            assert_eq!(
-                num,
-                BigInt {
-                    bytes: 3,
-                    data: vec![HalfSize::from(0x00332211)]
-                }
-            );
-        }
-        #[test]
-        fn extend_only_full() {
-            let mut num = BigInt::default();
-            num.extend(0x99887766554433221100u128.to_le_bytes());
-            assert_eq!(
-                num,
-                BigInt {
-                    bytes: 10,
-                    data: vec![
-                        HalfSize::from(0x33221100),
-                        HalfSize::from(0x77665544),
-                        HalfSize::from(0x00009988)
-                    ]
-                }
-            );
-        }
-        #[test]
-        fn extend_partial_and_full() {
-            let mut num = BigInt {
-                bytes: 5,
-                data: vec![HalfSize::from(0x33221100), HalfSize::from(0x44)],
-            };
-            num.extend(0x9988776655u64.to_le_bytes());
-            assert_eq!(
-                num,
-                BigInt {
-                    bytes: 10,
-                    data: vec![
-                        HalfSize::from(0x33221100),
-                        HalfSize::from(0x77665544),
-                        HalfSize::from(0x00009988)
-                    ]
-                }
-            );
-        }
-        #[test]
-        fn extend_partial_and_full_negative() {
-            let mut num = BigInt {
-                bytes: -5,
-                data: vec![HalfSize::from(0x33221100), HalfSize::from(0x44)],
-            };
-            num.extend(0x9988776655u64.to_le_bytes());
-            assert_eq!(
-                num,
-                BigInt {
-                    bytes: -10,
-                    data: vec![
-                        HalfSize::from(0x33221100),
-                        HalfSize::from(0x77665544),
-                        HalfSize::from(0x00009988)
-                    ]
-                }
-            );
-        }
-
-        #[test]
         fn from_u32s() {
             assert_eq!(
-                [0x33221100u32, 0x77665544, 0x9988]
-                    .into_iter()
-                    .collect::<BigInt>(),
+                BigInt::from_iter([0x33221100u32, 0x77665544, 0x9988]),
                 BigInt {
-                    bytes: 10,
+                    signum: SigNum::Positive,
                     data: vec![
                         HalfSize::from(0x33221100),
                         HalfSize::from(0x77665544),
@@ -1196,7 +1132,7 @@ mod tests {
             assert_eq!(
                 BigInt::from(-0x99887766554433221100i128),
                 BigInt {
-                    bytes: -10,
+                    signum: SigNum::Negative,
                     data: vec![
                         HalfSize::from(0x33221100),
                         HalfSize::from(0x77665544),
