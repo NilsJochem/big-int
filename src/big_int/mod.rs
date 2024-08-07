@@ -875,38 +875,14 @@ impl BigInt {
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, Self::bit_or_assign_internal)
-    }
-    fn bit_or_assign_internal(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitOrAssign::bitor_assign(part, rhs);
-        }
-        if self.data.len() < rhs.data.len() {
-            self.data.extend(rhs.data.iter().dropping(self.data.len()));
-            self.extent_length(HALF_SIZE_BYTES as isize);
-        }
+        Self::refer_direct(lhs, rhs, math_algos::bit::bit_or_assign_internal)
     }
     fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, Self::bit_xor_assign_internal)
-    }
-    fn bit_xor_assign_internal(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitXorAssign::bitxor_assign(part, rhs);
-        }
-        if self.data.len() < rhs.data.len() {
-            self.data.extend(
-                rhs.data
-                    .iter()
-                    .dropping(self.data.len())
-                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
-            );
-            self.extent_length(HALF_SIZE_BYTES as isize);
-        }
-        self.recalc_len();
+        Self::refer_direct(lhs, rhs, math_algos::bit::bit_xor_assign_internal)
     }
 
     fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -914,20 +890,7 @@ impl BigInt {
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
     {
-        Self::refer_direct(lhs, rhs, Self::bit_and_assign_internal)
-    }
-    fn bit_and_assign_internal(&mut self, rhs: &Self) {
-        for (part, rhs) in self.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitAndAssign::bitand_assign(part, rhs);
-        }
-
-        if self.data.len() > rhs.data.len() {
-            let to_remove = self.data.len() - rhs.data.len();
-            for _ in 0..to_remove {
-                self.pop();
-            }
-        }
-        self.recalc_len();
+        Self::refer_direct(lhs, rhs, math_algos::bit::bit_and_assign_internal)
     }
 
     fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -960,41 +923,7 @@ impl BigInt {
                 }
             };
         }
-        Self::refer_direct(lhs, rhs, Self::add_assign_internal)
-    }
-    fn add_assign_internal(&mut self, rhs: &Self) {
-        let orig_self_len = self.data.len();
-
-        if orig_self_len < rhs.data.len() {
-            self.data
-                .extend(rhs.data.iter().skip(orig_self_len).copied());
-            self.bytes = rhs.bytes;
-        }
-
-        let mut carry = HalfSize::default();
-        for elem in self
-            .data
-            .iter_mut()
-            .zip_longest(rhs.data.iter().take(orig_self_len).copied())
-        {
-            let (part, rhs) = match elem {
-                itertools::EitherOrBoth::Right(_rhs) => unreachable!("self was extendet"),
-                itertools::EitherOrBoth::Left(_part) if *carry == 0 => {
-                    break;
-                }
-                itertools::EitherOrBoth::Left(part) => (part, None),
-                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
-            };
-            let result = **part as usize + *carry as usize;
-            let result = FullSize::from(match rhs {
-                None => result,
-                Some(rhs) => result + *rhs as usize,
-            });
-
-            *part = result.lower();
-            carry = result.higher();
-        }
-        self.push(carry);
+        Self::refer_direct(lhs, rhs, math_algos::add::assign_internal)
     }
 
     fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -1046,54 +975,24 @@ impl BigInt {
 
         match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
-                lhs.sub_assign_smaller_same_sign(&rhs);
+                math_algos::sub::assign_smaller_same_sign(lhs, &rhs);
                 finnish(lhs);
                 Moo::BorrowedMut(lhs)
             }
             (lhs, Boo::BorrowedMut(borrowed)) => {
                 let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
-                borrowed.sub_assign_smaller_same_sign(&old_rhs);
+                math_algos::sub::assign_smaller_same_sign(borrowed, &old_rhs);
                 finnish(borrowed);
                 Moo::BorrowedMut(borrowed)
             }
             (lhs, rhs) => {
                 // can't really use storage in rhs (when existing) because algo can only sub smaller
                 let mut lhs = lhs.cloned();
-                lhs.sub_assign_smaller_same_sign(&rhs);
+                math_algos::sub::assign_smaller_same_sign(&mut lhs, &rhs);
                 finnish(&mut lhs);
                 Moo::Owned(lhs)
             }
         }
-    }
-
-    fn sub_assign_smaller_same_sign(&mut self, rhs: &Self) {
-        assert!(
-            !self.is_different_sign(rhs),
-            "self has different sign as rhs"
-        );
-        assert!(self.abs_ord(rhs).is_ge(), "self is smaller than rhs");
-
-        let mut carry = false;
-        for elem in self.data.iter_mut().zip_longest(&rhs.data) {
-            let (part, rhs) = match elem {
-                itertools::EitherOrBoth::Right(_rhs) => unreachable!("self is always bigger"),
-                itertools::EitherOrBoth::Left(_part) if !carry => {
-                    break;
-                }
-                itertools::EitherOrBoth::Left(part) => (part, None),
-                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
-            };
-
-            let result = FullSize::from(
-                *FullSize::new(*part, HalfSize::from(1))
-                    - carry as usize
-                    - rhs.map_or(0, |&rhs| *rhs as usize),
-            );
-            *part = result.lower();
-            carry = *result.higher() == 0; // extra bit was needed
-        }
-
-        self.recalc_len();
     }
 
     fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -1115,46 +1014,15 @@ impl BigInt {
 
         match (lhs, rhs) {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
-                *borrow_mut = borrow_mut.mul_internal(&borrow);
+                *borrow_mut = math_algos::mul::naive(borrow_mut, &borrow);
                 Moo::BorrowedMut(borrow_mut)
             }
-            (lhs, rhs) => Moo::Owned(lhs.mul_internal(&rhs)),
+            (lhs, rhs) => Moo::Owned(math_algos::mul::naive(&lhs, &rhs)),
         }
-    }
-
-    fn mul_internal(&self, rhs: &Self) -> Self {
-        // try to minimize outer loops
-        if self.data.len() < rhs.data.len() {
-            return rhs.mul_internal(self);
-        }
-        let mut out = Self::default();
-        for (i, rhs_part) in rhs.data.iter().enumerate() {
-            let mut result = std::ops::Mul::mul(self, rhs_part);
-            result <<= i * HalfSizeNative::BITS as usize;
-            out += result;
-        }
-
-        out.recalc_len();
-        out.bytes *= self.signum() * rhs.signum();
-        out
-    }
-    fn mul_at_offset(&self, rhs: HalfSize, i: usize) -> Self {
-        let mut out = Self::default();
-
-        let mut carry = HalfSize::default();
-        for elem in self.data.iter().skip(i) {
-            let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
-            let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
-
-            carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
-            out.data.push(add_result.lower());
-        }
-        out.data.push(carry);
-        out.recalc_len();
-        out
     }
 }
 
+mod math_algos;
 mod math_shortcuts;
 
 // no `std::ops::Not`, cause implied zeros to the left would need to be flipped
@@ -1189,7 +1057,7 @@ impl std::ops::Mul<&HalfSize> for &BigInt {
             }
             _ => {}
         }
-        self.mul_at_offset(*rhs, 0)
+        math_algos::mul::part_at_offset(self, *rhs, 0)
     }
 }
 impl std::ops::Mul<HalfSize> for &BigInt {
