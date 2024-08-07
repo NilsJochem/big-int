@@ -133,7 +133,7 @@ pub mod mul {
         }
         let mut out = BigInt::default();
         for (i, rhs_part) in rhs.data.iter().enumerate().rev() {
-            let mut result = std::ops::Mul::mul(lhs, rhs_part);
+            let mut result = std::ops::Mul::mul(lhs.clone(), rhs_part);
             result <<= i * HalfSizeNative::BITS as usize;
             out += result;
         }
@@ -142,21 +142,17 @@ pub mod mul {
         out.recalc_len();
         out
     }
-    pub fn part_at_offset_abs(lhs: &BigInt, rhs: HalfSize, i: usize) -> BigInt {
-        let mut out = BigInt::default();
-
+    pub fn assign_mul_part_at_offset(lhs: &mut BigInt, rhs: HalfSize, i: usize) {
         let mut carry = HalfSize::default();
-        for elem in lhs.data.iter().skip(i) {
+        for elem in lhs.data.iter_mut().skip(i) {
             let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
             let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
 
             carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
-            out.data.push(add_result.lower());
+            *elem = add_result.lower();
         }
-        out.data.push(carry);
-        out.signum = SigNum::Positive;
-        out.recalc_len();
-        out
+        lhs.data.push(carry);
+        lhs.recalc_len();
     }
 }
 

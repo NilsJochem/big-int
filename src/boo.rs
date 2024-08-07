@@ -42,6 +42,13 @@ impl<'b, T> Boo<'b, T> {
     {
         self.into_owned(T::clone)
     }
+    /// gives an owned instance of `T` by cloning the held reference
+    pub fn copied(self) -> T
+    where
+        T: Copy,
+    {
+        self.into_owned(|it| *it)
+    }
 }
 impl<'b, T> Deref for Boo<'b, T> {
     type Target = T;
