@@ -939,9 +939,7 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        math_shortcuts::try_all!(lhs, rhs,
-            flip math_shortcuts::add::ByZero,
-        );
+        math_shortcuts::try_all!(lhs, rhs, math_shortcuts::add::Zero,);
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
@@ -1008,7 +1006,7 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        math_shortcuts::try_all!(lhs, rhs, math_shortcuts::sub::ByZero,);
+        math_shortcuts::try_all!(lhs, rhs, math_shortcuts::sub::Zero,);
 
         if lhs.is_different_sign(&rhs) {
             return match (lhs, rhs) {
@@ -1107,10 +1105,12 @@ impl BigInt {
         let rhs: Boo<'_, Self> = rhs.into();
         Self::assert_pair_valid((&lhs, &rhs));
 
-        math_shortcuts::try_all!(lhs, rhs,
-            flip math_shortcuts::mul::ByZero,
-            flip math_shortcuts::mul::ByOne,
-            flip math_shortcuts::mul::ByPowerOfTwo,
+        math_shortcuts::try_all!(
+            lhs,
+            rhs,
+            math_shortcuts::mul::ByZero,
+            math_shortcuts::mul::ByOne,
+            math_shortcuts::mul::ByPowerOfTwo,
         );
 
         match (lhs, rhs) {
