@@ -465,9 +465,9 @@ impl From<SigNum> for i8 {
 impl SigNum {
     const fn into_i8(self) -> i8 {
         match self {
-            Self::Positive => 1,
             Self::Negative => -1,
             Self::Zero => 0,
+            Self::Positive => 1,
         }
     }
     const fn is_negative(self) -> bool {
@@ -481,9 +481,9 @@ impl SigNum {
     }
     const fn negate(self) -> Self {
         match self {
-            Self::Positive => Self::Negative,
-            Self::Zero => Self::Zero,
             Self::Negative => Self::Positive,
+            Self::Zero => Self::Zero,
+            Self::Positive => Self::Negative,
         }
     }
     const fn abs(self) -> Self {
@@ -513,7 +513,7 @@ impl std::ops::Mul for SigNum {
 }
 impl std::ops::MulAssign for SigNum {
     fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs
+        *self = *self * rhs;
     }
 }
 
@@ -530,7 +530,11 @@ impl std::fmt::Debug for BigInt {
         write!(
             f,
             "Number {{ {} 0x[",
-            if !self.is_negative() { '+' } else { '-' },
+            match self.signum {
+                SigNum::Negative => "-",
+                SigNum::Zero => "",
+                SigNum::Positive => "+",
+            }
         )?;
         for (pos, elem) in self.data.iter().rev().with_position() {
             write!(f, "{elem:08x}")?; // TODO hardcoded size
@@ -625,9 +629,6 @@ impl BigInt {
     pub const fn is_positive(&self) -> bool {
         self.signum.is_positive()
     }
-    pub const fn signum(&self) -> i8 {
-        self.signum.into_i8()
-    }
 
     pub const fn is_zero(&self) -> bool {
         self.signum.is_zero()
@@ -652,7 +653,7 @@ impl BigInt {
             self.data.pop();
         }
         if self.data.is_empty() {
-            self.signum = SigNum::Zero
+            self.signum = SigNum::Zero;
         } else {
             assert!(!self.signum.is_zero(), "found {self:?} with Signnum::Zero");
         }
@@ -1268,15 +1269,33 @@ mod tests {
     }
     pub(super) mod big_math {
         use super::*;
+        pub fn test_op_commute(
+            lhs: impl Into<BigInt>,
+            rhs: impl Into<BigInt>,
+            op: impl for<'b> Fn(Boo<'b, BigInt>, Boo<'b, BigInt>) -> Moo<'b, BigInt>,
+            result: impl Into<BigInt>,
+            op_dbg: &str,
+        ) {
+            let lhs = lhs.into();
+            let rhs = rhs.into();
+            let result = result.into();
+
+            test_op(lhs.clone(), rhs.clone(), &op, result.clone(), op_dbg);
+
+            test_op(rhs, lhs, op, result, op_dbg);
+        }
         pub fn test_op(
             lhs: impl Into<BigInt>,
             rhs: impl Into<BigInt>,
             op: impl for<'b> Fn(Boo<'b, BigInt>, Boo<'b, BigInt>) -> Moo<'b, BigInt>,
             result: impl Into<BigInt>,
+            op_dbg: impl AsRef<str>,
         ) {
             let lhs = lhs.into();
             let rhs = rhs.into();
             let result = result.into();
+            let op_dbg = op_dbg.as_ref();
+            let build_msg_id = |t1: &str, t2: &str| format!("{t1}{lhs:?} {op_dbg} {t2}{rhs:?}");
             let validate = |res: Moo<BigInt>, dbg: &str| {
                 assert_eq!(*res, result, "res equals with {dbg}");
             };
@@ -1291,86 +1310,75 @@ mod tests {
             {
                 let mut lhs = lhs.clone();
                 let res = op(Boo::from(&mut lhs), Boo::from(&rhs));
-                validate_mut(res, "(&mut, &)");
-                assert_eq!(lhs, result, "lhs assigned with (&mut, &)");
+                let msg = build_msg_id("&mut", "&");
+                validate_mut(res, &msg);
+                assert_eq!(lhs, result, "assigned with {msg}");
             }
             {
                 let mut lhs = lhs.clone();
                 let res = op(Boo::from(&mut lhs), Boo::from(rhs.clone()));
-                validate_mut(res, "(&mut, o)");
-                assert_eq!(lhs, result, "lhs assigned with (&mut, o)");
+                let msg = build_msg_id("&mut", "");
+                validate_mut(res, &msg);
+                assert_eq!(lhs, result, "assigned with {msg}");
             }
 
             {
                 let mut rhs = rhs.clone();
                 let res = op(Boo::from(&lhs), Boo::from(&mut rhs));
-                validate_mut(res, "(&, &mut)");
-                assert_eq!(rhs, result, "rhs assigned with (&, &mut)");
+                let msg = build_msg_id("&", "&mut");
+                validate_mut(res, &msg);
+                assert_eq!(rhs, result, "assigned with {msg}");
             }
             {
                 let mut rhs = rhs.clone();
                 let res = op(Boo::from(lhs.clone()), Boo::from(&mut rhs));
-                validate_mut(res, "(o, &mut)");
-                assert_eq!(rhs, result, "rhs assigned with (o, &mut)");
+                let msg = build_msg_id("", "&mut");
+                validate_mut(res, &msg);
+                assert_eq!(rhs, result, "assigned with {msg}");
             }
 
             let res = op(Boo::from(&lhs), Boo::from(&rhs));
-            validate_non_mut(res, "res equals with (&, &)");
+            validate_non_mut(res, &format!("res equals with {}", build_msg_id("&", "&")));
 
             let res = op(Boo::from(lhs.clone()), Boo::from(&rhs));
-            validate_non_mut(res, "res equals with (o, &)");
+            validate_non_mut(res, &format!("res equals with {}", build_msg_id("", "&")));
 
             let res = op(Boo::from(&lhs), Boo::from(rhs.clone()));
-            validate_non_mut(res, "res equals with (&, o)");
+            validate_non_mut(res, &format!("res equals with {}", build_msg_id("&", "")));
 
-            let res = op(Boo::from(lhs), Boo::from(rhs));
-            validate_non_mut(res, "res equals with (o, o)");
+            let res = op(Boo::from(lhs.clone()), Boo::from(rhs.clone()));
+            validate_non_mut(res, &format!("res equals with {}", build_msg_id("", "")));
         }
 
         #[test]
         fn bit_or() {
-            assert_eq!(
-                BigInt::from(0x1111_00000000_00001111_01010101u128)
-                    | BigInt::from(0x0101_01010101_11110000u128),
-                BigInt::from(0x1111_00000101_01011111_11110101u128),
-                "bigger lhs"
-            );
-            assert_eq!(
-                BigInt::from(0x0101_01010101_11110000u128)
-                    | BigInt::from(0x1111_00000000_00001111_01010101u128),
-                BigInt::from(0x1111_00000101_01011111_11110101u128),
-                "bigger rhs"
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigInt::bitor(a, b),
+                0x1111_00000101_01011111_11110101u128,
+                "|",
             );
         }
         #[test]
         fn bit_xor() {
-            assert_eq!(
-                BigInt::from(0x1111_00000000_00001111_01010101u128)
-                    ^ BigInt::from(0x0101_01010101_11110000u128),
-                BigInt::from(0x1111_00000101_01011010_10100101u128),
-                "bigger lhs"
-            );
-            assert_eq!(
-                BigInt::from(0x0101_01010101_11110000u128)
-                    ^ BigInt::from(0x1111_00000000_00001111_01010101u128),
-                BigInt::from(0x1111_00000101_01011010_10100101u128),
-                "bigger rhs"
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigInt::bitxor(a, b),
+                0x1111_00000101_01011010_10100101u128,
+                "^",
             );
         }
 
         #[test]
         fn bit_and() {
-            assert_eq!(
-                BigInt::from(0x1111_00000000_00001111_01010101u128)
-                    & BigInt::from(0x0101_01010101_11110000u128),
-                BigInt::from(0x0101_01010000u128),
-                "bigger lhs"
-            );
-            assert_eq!(
-                BigInt::from(0x0101_01010101_11110000u128)
-                    & BigInt::from(0x1111_00000000_00001111_01010101u128),
-                BigInt::from(0x0101_01010000u128),
-                "bigger rhs"
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigInt::bitand(a, b),
+                0x0101_01010000u128,
+                "&",
             );
         }
 
@@ -1391,123 +1399,125 @@ mod tests {
         }
         #[test]
         fn add_overflow() {
-            assert_eq!(
-                BigInt::from(0xffff_ffff_ffff_ffffu64) + BigInt::from(1),
-                BigInt::from(0x1_0000_0000_0000_0000u128),
-                "bigger lhs"
-            );
-            assert_eq!(
-                BigInt::from(1) + BigInt::from(0xffff_ffff_ffff_ffffu64),
-                BigInt::from(0x1_0000_0000_0000_0000u128),
-                "bigger rhs"
+            test_op_commute(
+                0xffff_ffff_ffff_ffffu64,
+                1,
+                |a, b| BigInt::add(a, b),
+                0x1_0000_0000_0000_0000u128,
+                "+",
             );
         }
         #[test]
         fn add_middle_overflow() {
-            assert_eq!(
-                BigInt::from(0x1000_0000_ffff_ffff_ffff_ffffu128) + BigInt::from(1),
-                BigInt::from(0x1000_0001_0000_0000_0000_0000u128),
-                "bigger lhs"
-            );
-            assert_eq!(
-                BigInt::from(1) + BigInt::from(0x1000_0000_ffff_ffff_ffff_ffffu128),
-                BigInt::from(0x1000_0001_0000_0000_0000_0000u128),
-                "bigger rhs"
+            test_op_commute(
+                0x1000_0000_ffff_ffff_ffff_ffffu128,
+                1,
+                |a, b| BigInt::add(a, b),
+                0x1000_0001_0000_0000_0000_0000u128,
+                "+",
             );
         }
         #[test]
         fn add_two_negative() {
-            assert_eq!(
-                BigInt::from(-0x11223344_55667788i128) + BigInt::from(-0x88776655_44332211i128),
-                BigInt::from(-0x9999_9999_9999_9999i128)
+            test_op_commute(
+                -0x11223344_55667788i128,
+                -0x88776655_44332211i128,
+                |a, b| BigInt::add(a, b),
+                -0x9999_9999_9999_9999i128,
+                "+",
             );
         }
         #[test]
         fn add() {
-            assert_eq!(
-                BigInt::from(0x11223344_55667788i128) - BigInt::from(-0x88776655_44332211i128),
-                BigInt::from(0x9999_9999_9999_9999i128)
+            test_op(
+                0x11223344_55667788i128,
+                -0x88776655_44332211i128,
+                |a, b| BigInt::sub(a, b),
+                0x9999_9999_9999_9999i128,
+                "-",
             );
-            assert_eq!(
-                BigInt::from(0x11223344_55667788i128) + BigInt::from(0x88776655_44332211i128),
-                BigInt::from(0x9999_9999_9999_9999i128)
+            test_op_commute(
+                0x11223344_55667788i128,
+                0x88776655_44332211i128,
+                |a, b| BigInt::add(a, b),
+                0x9999_9999_9999_9999i128,
+                "+",
             );
         }
 
         #[test]
         fn sub_big() {
-            assert_eq!(
-                BigInt::from(0x9999_9999_9999_9999i128) - BigInt::from(0x88776655_44332211i128),
-                BigInt::from(0x11223344_55667788i128)
+            test_op(
+                0x9999_9999_9999_9999i128,
+                0x88776655_44332211i128,
+                |a, b| BigInt::sub(a, b),
+                0x11223344_55667788i128,
+                "-",
             );
-            assert_eq!(
-                BigInt::from(0x9999_9999_9999_9999i128) + BigInt::from(-0x88776655_44332211i128),
-                BigInt::from(0x11223344_55667788i128)
+            test_op_commute(
+                0x9999_9999_9999_9999i128,
+                -0x88776655_44332211i128,
+                |a, b| BigInt::add(a, b),
+                0x11223344_55667788i128,
+                "+",
             );
         }
         #[test]
         fn sub_sign() {
-            assert_eq!(BigInt::from(1) - BigInt::from(2), BigInt::from(-1));
-            assert_eq!(BigInt::from(-1) - BigInt::from(-2), BigInt::from(1));
+            test_op(1, 2, |a, b| BigInt::sub(a, b), -1, "-");
+            test_op(-1, -2, |a, b| BigInt::sub(a, b), 1, "-");
         }
         #[test]
         fn sub_overflow() {
-            assert_eq!(
-                BigInt::from(0x1_0000_0000_0000_0000_0000_0000_0000i128) - BigInt::from(1),
-                BigInt::from(0xffff_ffff_ffff_ffff_ffff_ffff_ffffi128)
+            test_op(
+                0x1_0000_0000_0000_0000_0000_0000_0000i128,
+                1,
+                |a, b| BigInt::sub(a, b),
+                0xffff_ffff_ffff_ffff_ffff_ffff_ffffi128,
+                "-",
             );
         }
 
         #[test]
         fn mul() {
-            assert_eq!(BigInt::from(7) * BigInt::from(6), BigInt::from(42));
-            assert_eq!(
-                BigInt::from(30_000_000_700_000u128) * BigInt::from(60),
-                BigInt::from(180_000_004_200_0000u128)
+            test_op_commute(7, 6, |a, b| BigInt::mul(a, b), 42, "*");
+            test_op_commute(
+                30_000_000_700_000u128,
+                60,
+                |a, b| BigInt::mul(a, b),
+                180_000_004_200_0000u128,
+                "*",
             );
         }
         #[test]
         fn mul_one_big() {
-            assert_eq!(
-                BigInt::from(0x0feeddcc_bbaa9988_77665544_33221100u128) * BigInt::from(2),
-                [0x1fddbb9977553310eeccaa8866442200u128]
-                    .into_iter()
-                    .collect::<BigInt>(),
-                "lhs big"
-            );
-            assert_eq!(
-                BigInt::from(2) * BigInt::from(0x0feeddcc_bbaa9988_77665544_33221100u128),
-                [0x1fddbb9977553310eeccaa8866442200u128]
-                    .into_iter()
-                    .collect::<BigInt>(),
-                "rhs big"
+            test_op_commute(
+                0x0feeddcc_bbaa9988_77665544_33221100u128,
+                2,
+                |a, b| BigInt::mul(a, b),
+                0x1fddbb9977553310eeccaa8866442200u128,
+                "*",
             );
         }
-        #[test]
-        fn mul_sign_pow_two() {
-            assert_eq!(BigInt::from(2) * BigInt::from(2), BigInt::from(4));
-            assert_eq!(BigInt::from(-2) * BigInt::from(2), BigInt::from(-4));
-            assert_eq!(BigInt::from(2) * BigInt::from(-2), BigInt::from(-4));
-            assert_eq!(BigInt::from(-2) * BigInt::from(-2), BigInt::from(4));
-        }
+
         #[test]
         fn mul_sign() {
-            assert_eq!(BigInt::from(3) * BigInt::from(3), BigInt::from(9));
-            assert_eq!(BigInt::from(-3) * BigInt::from(3), BigInt::from(-9));
-            assert_eq!(BigInt::from(3) * BigInt::from(-3), BigInt::from(-9));
-            assert_eq!(BigInt::from(-3) * BigInt::from(-3), BigInt::from(9));
+            test_op_commute(3, 3, |a, b| BigInt::mul(a, b), 9, "*");
+            test_op_commute(-3, 3, |a, b| BigInt::mul(a, b), -9, "*");
+            test_op_commute(3, -3, |a, b| BigInt::mul(a, b), -9, "*");
+            test_op_commute(-3, -3, |a, b| BigInt::mul(a, b), 9, "*");
         }
         #[test]
         fn mul_both_big() {
-            assert_eq!(
-                BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128)
-                    * BigInt::from(0xffeeddcc_bbaa9988_77665544_33221100u128),
-                [
+            test_op_commute(
+                0xffeeddcc_bbaa9988_77665544_33221100u128,
+                0xffeeddcc_bbaa9988_77665544_33221100u128,
+                |a, b| BigInt::mul(a, b),
+                BigInt::from_iter([
                     0x33432fd716ccd7135f999f4e85210000u128,
                     0xffddbcbf06b5eed38628ddc706bf1222u128,
-                ]
-                .into_iter()
-                .collect::<BigInt>()
+                ]),
+                "*",
             );
         }
 

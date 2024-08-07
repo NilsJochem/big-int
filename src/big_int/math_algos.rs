@@ -48,7 +48,7 @@ pub mod add {
 
     pub fn assign_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
         assert!(
-            lhs.is_zero() || rhs.is_zero() || lhs.signum() == rhs.signum(),
+            lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
         );
         let orig_self_len = lhs.data.len();
@@ -83,9 +83,9 @@ pub mod add {
         }
         lhs.push(carry);
         if lhs.is_zero() {
-            lhs.signum = rhs.signum
+            lhs.signum = rhs.signum;
         }
-        lhs.recalc_len()
+        lhs.recalc_len();
     }
 }
 
@@ -94,7 +94,7 @@ pub mod sub {
 
     pub fn assign_smaller_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
         assert!(
-            lhs.is_zero() || rhs.is_zero() || lhs.signum() == rhs.signum(),
+            lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
         );
         assert!(lhs.abs_ord(rhs).is_ge(), "lhs is smaller than rhs");
