@@ -1430,8 +1430,66 @@ mod tests {
             );
         }
     }
-    mod big_math {
+    pub(super) mod big_math {
         use super::*;
+        pub fn test_op(
+            lhs: impl Into<BigInt>,
+            rhs: impl Into<BigInt>,
+            op: impl for<'b> Fn(Boo<'b, BigInt>, Boo<'b, BigInt>) -> Moo<'b, BigInt>,
+            result: impl Into<BigInt>,
+        ) {
+            let lhs = lhs.into();
+            let rhs = rhs.into();
+            let result = result.into();
+            let validate = |res: Moo<BigInt>, dbg: &str| {
+                assert_eq!(*res, result, "res equals with {dbg}");
+            };
+            let validate_mut = |res: Moo<BigInt>, dbg: &str| {
+                assert!(matches!(res, Moo::BorrowedMut(_)), "res mut ref with {dbg}");
+                validate(res, dbg);
+            };
+            let validate_non_mut = |res: Moo<BigInt>, dbg: &str| {
+                assert!(matches!(res, Moo::Owned(_)), "res owned with {dbg}");
+                validate(res, dbg);
+            };
+            {
+                let mut lhs = lhs.clone();
+                let res = op(Boo::from(&mut lhs), Boo::from(&rhs));
+                validate_mut(res, "(&mut, &)");
+                assert_eq!(lhs, result, "lhs assigned with (&mut, &)");
+            }
+            {
+                let mut lhs = lhs.clone();
+                let res = op(Boo::from(&mut lhs), Boo::from(rhs.clone()));
+                validate_mut(res, "(&mut, o)");
+                assert_eq!(lhs, result, "lhs assigned with (&mut, o)");
+            }
+
+            {
+                let mut rhs = rhs.clone();
+                let res = op(Boo::from(&lhs), Boo::from(&mut rhs));
+                validate_mut(res, "(&, &mut)");
+                assert_eq!(rhs, result, "rhs assigned with (&, &mut)");
+            }
+            {
+                let mut rhs = rhs.clone();
+                let res = op(Boo::from(lhs.clone()), Boo::from(&mut rhs));
+                validate_mut(res, "(o, &mut)");
+                assert_eq!(rhs, result, "rhs assigned with (o, &mut)");
+            }
+
+            let res = op(Boo::from(&lhs), Boo::from(&rhs));
+            validate_non_mut(res, "res equals with (&, &)");
+
+            let res = op(Boo::from(lhs.clone()), Boo::from(&rhs));
+            validate_non_mut(res, "res equals with (o, &)");
+
+            let res = op(Boo::from(&lhs), Boo::from(rhs.clone()));
+            validate_non_mut(res, "res equals with (&, o)");
+
+            let res = op(Boo::from(lhs), Boo::from(rhs));
+            validate_non_mut(res, "res equals with (o, o)");
+        }
 
         #[test]
         fn bit_or() {

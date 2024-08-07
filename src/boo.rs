@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 /// Borrowed or Owned, used to capture all possible variants when implementing traits for Self/&Self
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, PartialEq, Eq, derive_more::From)]
 pub enum Boo<'b, T> {
     Owned(T),
     Borrowed(&'b T),
@@ -65,7 +65,7 @@ impl<'b, T> AsRef<T> for Boo<'b, T> {
 }
 
 /// Mutable referenec Or Owned
-#[derive(Debug, derive_more::From)]
+#[derive(Debug, PartialEq, Eq, derive_more::From)]
 pub enum Moo<'b, T> {
     Owned(T),
     BorrowedMut(&'b mut T),
