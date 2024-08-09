@@ -30,7 +30,7 @@ mod create {
             BigInt::from_iter([0x3322_1100_u32, 0x7766_5544, 0x9988]),
             BigInt {
                 signum: SigNum::Positive,
-                data: vec![
+                digits: vec![
                     HalfSize::from(0x3322_1100),
                     HalfSize::from(0x7766_5544),
                     HalfSize::from(0x0000_9988)
@@ -44,7 +44,7 @@ mod create {
             BigInt::from(-0x9988_7766_5544_3322_1100_i128),
             BigInt {
                 signum: SigNum::Negative,
-                data: vec![
+                digits: vec![
                     HalfSize::from(0x3322_1100),
                     HalfSize::from(0x7766_5544),
                     HalfSize::from(0x0000_9988)
@@ -109,7 +109,8 @@ mod order {
     #[test]
     fn same() {
         assert_eq!(
-            BigInt::from(0x9988_7766_5544_3322_1100_u128).cmp(&BigInt::from(0x9988_7766_5544_3322_1100_u128)),
+            BigInt::from(0x9988_7766_5544_3322_1100_u128)
+                .cmp(&BigInt::from(0x9988_7766_5544_3322_1100_u128)),
             Ordering::Equal
         );
         assert_eq!(
@@ -134,20 +135,30 @@ mod order {
     #[test]
     fn middle_diff() {
         assert_eq!(
-            BigInt::from(0x9988_8866_5544_3322_1100_u128).cmp(&BigInt::from(0x9988_7766_5544_3322_1100_i128)),
+            BigInt::from(0x9988_8866_5544_3322_1100_u128)
+                .cmp(&BigInt::from(0x9988_7766_5544_3322_1100_i128)),
             Ordering::Greater
         );
         assert_eq!(
-            BigInt::from(0x9988_7766_5544_3322_1100_i128).cmp(&BigInt::from(0x9988_8866_5544_3322_1100_i128)),
+            BigInt::from(0x9988_7766_5544_3322_1100_i128)
+                .cmp(&BigInt::from(0x9988_8866_5544_3322_1100_i128)),
             Ordering::Less
         );
     }
     #[test]
     fn size_diff() {
         assert_eq!(
-            BigInt::from(0x0fff_ffff_ffff_ffff_ffff_u128).cmp(&BigInt::from(0x9988_7766_5544_3322_1100_i128)),
+            BigInt::from(0x0fff_ffff_ffff_ffff_ffff_u128)
+                .cmp(&BigInt::from(0x9988_7766_5544_3322_1100_i128)),
             Ordering::Less
         );
+    }
+
+    #[test]
+    fn differnd_len() {
+        assert!(
+            BigInt::from(0x7766_5544_3322_1100u64) < BigInt::from(0x0001_0000_0000_0000_0000u128)
+        )
     }
 }
 mod full_size {
@@ -305,6 +316,35 @@ pub(super) mod big_math {
         );
     }
     #[test]
+    fn shr_overflow() {
+        assert_eq!(
+            BigInt::shr_internal(BigInt::from(0x0099_8877_6655_4433_2211_u128), 40),
+            (
+                Moo::from(BigInt::from(0x9988_7766_u32)),
+                BigInt::from(0x55_4433_2211u64)
+            )
+        );
+    }
+
+    #[test]
+    fn digits_pow_2() {
+        let zero = BigInt::from(0x0);
+        let one = BigInt::from(0x1);
+        let two_pow_9 = BigInt::from(0x100);
+        let two_pow_9_minus_one = BigInt::from(0xff);
+        for (pow, res) in [(2, 9), (4, 5), (8, 3), (16, 2)] {
+            assert_eq!(zero.digits(pow), 0, "zero.digits({pow})");
+            assert_eq!(one.digits(pow), 1, "one.digits({pow})");
+            assert_eq!(two_pow_9.digits(pow), res, "(2^9).digits({pow})");
+            assert_eq!(
+                two_pow_9_minus_one.digits(pow),
+                res - 1,
+                "(2^9-1).digits({pow})"
+            );
+        }
+    }
+
+    #[test]
     fn add_overflow() {
         test_op_commute(
             0xffff_ffff_ffff_ffffu64,
@@ -405,6 +445,14 @@ pub(super) mod big_math {
             0x1fdd_bb99_7755_3310_eecc_aa88_6644_2200_u128,
             "*",
         );
+    }
+
+    #[test]
+    fn mul_with_digit() {
+        assert_eq!(
+            BigInt::from(0x0001_0000_0000_0000u64) * HalfSize::from(0x7766),
+            BigInt::from(0x7766_0000_0000_0000u64)
+        )
     }
 
     #[test]

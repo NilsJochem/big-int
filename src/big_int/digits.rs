@@ -76,7 +76,7 @@ impl Default for HalfSize {
 }
 impl From<HalfSizeNative> for HalfSize {
     fn from(value: HalfSizeNative) -> Self {
-        Self { native: value }
+        Self::new(value)
     }
 }
 impl From<[u8; HALF_SIZE_BYTES]> for HalfSize {
@@ -86,6 +86,9 @@ impl From<[u8; HALF_SIZE_BYTES]> for HalfSize {
 }
 
 impl HalfSize {
+    pub const fn new(native: HalfSizeNative) -> Self {
+        Self { native }
+    }
     fn format_index(index: usize) -> usize {
         assert!(index < HALF_SIZE_BYTES);
         if cfg!(target_endian = "little") {

@@ -5,41 +5,42 @@ use itertools::Itertools;
 pub mod bit_math {
     use super::*;
     pub fn bit_or_assign(lhs: &mut BigInt, rhs: &BigInt) {
-        for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitOrAssign::bitor_assign(part, rhs);
+        for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
+            std::ops::BitOrAssign::bitor_assign(digit, rhs);
         }
-        if lhs.data.len() < rhs.data.len() {
-            lhs.data.extend(rhs.data.iter().dropping(lhs.data.len()));
+        if lhs.digits.len() < rhs.digits.len() {
+            lhs.digits
+                .extend(rhs.digits.iter().dropping(lhs.digits.len()));
         }
     }
 
     pub fn bit_xor_assign(lhs: &mut BigInt, rhs: &BigInt) {
-        for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitXorAssign::bitxor_assign(part, rhs);
+        for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
+            std::ops::BitXorAssign::bitxor_assign(digit, rhs);
         }
-        if lhs.data.len() < rhs.data.len() {
-            lhs.data.extend(
-                rhs.data
+        if lhs.digits.len() < rhs.digits.len() {
+            lhs.digits.extend(
+                rhs.digits
                     .iter()
-                    .dropping(lhs.data.len())
+                    .dropping(lhs.digits.len())
                     .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
             );
         }
-        lhs.recalc_len();
+        lhs.truncate_leading_zeros();
     }
 
     pub fn bit_and_assign(lhs: &mut BigInt, rhs: &BigInt) {
-        for (part, rhs) in lhs.data.iter_mut().zip(rhs.data.iter()) {
-            std::ops::BitAndAssign::bitand_assign(part, rhs);
+        for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
+            std::ops::BitAndAssign::bitand_assign(digit, rhs);
         }
 
-        if lhs.data.len() > rhs.data.len() {
-            let to_remove = lhs.data.len() - rhs.data.len();
+        if lhs.digits.len() > rhs.digits.len() {
+            let to_remove = lhs.digits.len() - rhs.digits.len();
             for _ in 0..to_remove {
                 lhs.pop();
             }
         }
-        lhs.recalc_len();
+        lhs.truncate_leading_zeros();
     }
 }
 
@@ -51,41 +52,41 @@ pub mod add {
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
         );
-        let orig_self_len = lhs.data.len();
+        let orig_self_len = lhs.digits.len();
 
-        if orig_self_len < rhs.data.len() {
-            lhs.data
-                .extend(rhs.data.iter().skip(orig_self_len).copied());
+        if orig_self_len < rhs.digits.len() {
+            lhs.digits
+                .extend(rhs.digits.iter().skip(orig_self_len).copied());
         }
 
         let mut carry = HalfSize::default();
         for elem in lhs
-            .data
+            .digits
             .iter_mut()
-            .zip_longest(rhs.data.iter().take(orig_self_len).copied())
+            .zip_longest(rhs.digits.iter().take(orig_self_len).copied())
         {
-            let (part, rhs) = match elem {
+            let (digit, rhs) = match elem {
                 itertools::EitherOrBoth::Right(_rhs) => unreachable!("self was extendet"),
-                itertools::EitherOrBoth::Left(_part) if *carry == 0 => {
+                itertools::EitherOrBoth::Left(_digit) if *carry == 0 => {
                     break;
                 }
-                itertools::EitherOrBoth::Left(part) => (part, None),
-                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
+                itertools::EitherOrBoth::Left(digit) => (digit, None),
+                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
             };
-            let result = **part as usize + *carry as usize;
+            let result = **digit as usize + *carry as usize;
             let result = FullSize::from(match rhs {
                 None => result,
                 Some(rhs) => result + *rhs as usize,
             });
 
-            *part = result.lower();
+            *digit = result.lower();
             carry = result.higher();
         }
         lhs.push(carry);
         if lhs.is_zero() {
             lhs.signum = rhs.signum;
         }
-        lhs.recalc_len();
+        lhs.truncate_leading_zeros();
     }
 }
 
@@ -100,26 +101,26 @@ pub mod sub {
         assert!(lhs.abs_ord(rhs).is_ge(), "lhs is smaller than rhs");
 
         let mut carry = false;
-        for elem in lhs.data.iter_mut().zip_longest(&rhs.data) {
-            let (part, rhs) = match elem {
+        for elem in lhs.digits.iter_mut().zip_longest(&rhs.digits) {
+            let (digit, rhs) = match elem {
                 itertools::EitherOrBoth::Right(_rhs) => unreachable!("lhs is always bigger"),
-                itertools::EitherOrBoth::Left(_part) if !carry => {
+                itertools::EitherOrBoth::Left(_digit) if !carry => {
                     break;
                 }
-                itertools::EitherOrBoth::Left(part) => (part, None),
-                itertools::EitherOrBoth::Both(part, rhs) => (part, Some(rhs)),
+                itertools::EitherOrBoth::Left(digit) => (digit, None),
+                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
             };
 
             let result = FullSize::from(
-                *FullSize::new(*part, HalfSize::from(1))
+                *FullSize::new(*digit, HalfSize::from(1))
                     - carry as usize
                     - rhs.map_or(0, |&rhs| *rhs as usize),
             );
-            *part = result.lower();
+            *digit = result.lower();
             carry = *result.higher() == 0; // extra bit was needed
         }
 
-        lhs.recalc_len();
+        lhs.truncate_leading_zeros();
     }
 }
 
@@ -128,31 +129,33 @@ pub mod mul {
 
     pub fn naive(lhs: &BigInt, rhs: &BigInt) -> BigInt {
         // try to minimize outer loops
-        if lhs.data.len() < rhs.data.len() {
+        if lhs.digits.len() < rhs.digits.len() {
             return naive(rhs, lhs);
         }
         let mut out = BigInt::default();
-        for (i, rhs_part) in rhs.data.iter().enumerate().rev() {
-            let mut result = std::ops::Mul::mul(lhs.clone(), rhs_part);
+        for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
+            let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
             result <<= i * HalfSizeNative::BITS as usize;
             out += result;
         }
 
         out.signum = lhs.signum * rhs.signum;
-        out.recalc_len();
+        out.truncate_leading_zeros();
         out
     }
-    pub fn assign_mul_part_at_offset(lhs: &mut BigInt, rhs: HalfSize, i: usize) {
+    pub fn assign_mul_digit_at_offset(lhs: &mut BigInt, rhs: HalfSize, i: usize) {
         let mut carry = HalfSize::default();
-        for elem in lhs.data.iter_mut().skip(i) {
+        for elem in lhs.digits.iter_mut().skip(i) {
             let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
             let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
 
             carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
             *elem = add_result.lower();
         }
-        lhs.data.push(carry);
-        lhs.recalc_len();
+        lhs.digits.push(carry);
+        lhs.truncate_leading_zeros();
+    }
+}
     }
 }
 

@@ -9,11 +9,11 @@ use std::ops::{
 use crate::boo::{Boo, Moo};
 use math_shortcuts::MathShortcut;
 
+mod digits;
 mod math_algos;
 mod math_shortcuts;
-mod part;
 mod primitve;
-use part::{FullSize, HalfSize, HalfSizeNative, HALF_SIZE_BYTES};
+use digits::{FullSize, HalfSize, HalfSizeNative, HALF_SIZE_BYTES};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(i8)]
@@ -111,8 +111,8 @@ impl TieBreaker for TieBigger {
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct BigInt {
     signum: SigNum,
-    /// holds the `HalfSize` values in LE order
-    data: Vec<HalfSize>,
+    /// holds the digits (in base 2^`HalfSize::BITS`) in LE order
+    digits: Vec<HalfSize>,
 }
 impl std::fmt::Debug for BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -125,8 +125,8 @@ impl std::fmt::Debug for BigInt {
                 SigNum::Positive => "+",
             }
         )?;
-        for (pos, elem) in self.data.iter().rev().with_position() {
-            write!(f, "{elem:08x}")?; // TODO hardcoded size
+        for (pos, elem) in self.digits.iter().rev().with_position() {
+            write!(f, "{elem:size$x}", size = HALF_SIZE_BYTES * 2)?;
             if matches!(
                 pos,
                 itertools::Position::First | itertools::Position::Middle
@@ -145,8 +145,8 @@ impl std::fmt::Debug for BigInt {
 impl std::fmt::LowerHex for BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buf = String::new();
-        for part in self.data.iter().rev() {
-            write!(buf, "{part:x}")?;
+        for digit in self.digits.iter().rev() {
+            write!(buf, "{digit:x}")?;
         }
         f.pad_integral(
             !self.is_negative(),
@@ -158,8 +158,8 @@ impl std::fmt::LowerHex for BigInt {
 impl std::fmt::UpperHex for BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buf = String::new();
-        for part in self.data.iter().rev() {
-            write!(buf, "{part:X}")?;
+        for digit in self.digits.iter().rev() {
+            write!(buf, "{digit:X}")?;
         }
         f.pad_integral(
             !self.is_negative(),
@@ -176,39 +176,52 @@ impl PartialOrd for BigInt {
 }
 impl Ord for BigInt {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering as O;
-        match self.signum.cmp(&other.signum) {
-            O::Less => O::Less,
-            O::Greater => O::Greater,
-            O::Equal => self.abs_ord(other),
+        self.signum
+            .cmp(&other.signum)
+            .then_with(|| self.abs_ord(other))
+    }
+}
+impl From<HalfSize> for BigInt {
+    fn from(value: HalfSize) -> Self {
+        if *value == 0 {
+            Self {
+                signum: SigNum::Zero,
+                digits: vec![],
+            }
+        } else {
+            Self {
+                signum: SigNum::Positive,
+                digits: vec![value],
+            }
         }
     }
 }
-
+impl FromIterator<HalfSize> for BigInt {
+    fn from_iter<T: IntoIterator<Item = HalfSize>>(iter: T) -> Self {
+        let mut num = Self::default();
+        iter.into_iter()
+            .for_each(|next| num.digits.push(next.into()));
+        num.signum = SigNum::Positive;
+        num.truncate_leading_zeros();
+        num
+    }
+}
 impl<POSITIVE: primitve::UNum> FromIterator<POSITIVE> for BigInt {
-    /// the iter should contain the parts in little endian order
+    /// the iter should contain the digits in little endian order
     fn from_iter<T: IntoIterator<Item = POSITIVE>>(iter: T) -> Self {
         let binding = iter
             .into_iter()
             .flat_map(primitve::Primitive::to_le_bytes)
             .chunks(HALF_SIZE_BYTES);
 
-        let mut num = Self::default();
-        binding
-            .into_iter()
-            .map(|chunk| {
+        Self::from_iter(binding.into_iter().map(|chunk| {
                 let mut buf = [0; HALF_SIZE_BYTES];
 
                 for (place, byte) in buf.iter_mut().zip(chunk) {
                     *place = byte;
                 }
-                buf
-            })
-            .for_each(|next| num.data.push(next.into()));
-
-        num.signum = SigNum::Positive;
-        num.recalc_len();
-        num
+            HalfSize::from(buf)
+        }))
     }
 }
 impl<PRIMITIVE: primitve::Primitive> From<PRIMITIVE> for BigInt {
@@ -227,26 +240,31 @@ impl<PRIMITIVE: primitve::Primitive> From<PRIMITIVE> for BigInt {
 }
 
 impl BigInt {
-    fn recalc_len(&mut self) {
-        while self.data.last().is_some_and(|&it| *it == 0) {
-            self.data.pop();
+    pub const BASIS_POW: usize = HalfSizeNative::BITS as usize;
+    pub const BASIS: usize = 1 << Self::BASIS_POW;
+
+    fn truncate_leading_zeros(&mut self) {
+        while self.digits.last().is_some_and(|&it| *it == 0) {
+            self.digits.pop();
         }
-        if self.data.is_empty() {
+
+        // recalculates the sign
+        if self.digits.is_empty() {
             self.signum = SigNum::Zero;
         } else {
             assert!(!self.signum.is_zero(), "found {self:?} with Signnum::Zero");
         }
     }
     fn pop(&mut self) {
-        self.data.pop();
-        self.recalc_len();
+        self.digits.pop();
+        self.truncate_leading_zeros();
     }
     fn push(&mut self, value: impl Into<HalfSize>) {
         let value = value.into();
         if *value == 0 {
             return;
         }
-        self.data.push(value);
+        self.digits.push(value);
     }
 
     pub const fn is_negative(&self) -> bool {
@@ -259,24 +277,44 @@ impl BigInt {
         self.signum.is_zero()
     }
     pub fn is_abs_one(&self) -> bool {
-        self.data.len() == 1 && *self.data[0] == 1
+        self.digits.len() == 1 && *self.digits[0] == 1
     }
     const fn is_different_sign(&self, rhs: &Self) -> bool {
         !self.is_negative() ^ !rhs.is_negative()
     }
 
+    /// currently only works with powers of two
+    pub fn digits(&self, radix: usize) -> usize {
+        if radix == Self::BASIS {
+            return self.digits.len();
+        }
+        if radix == 2 {
+            return self.digits.last().map_or(0, |last| {
+                self.digits(Self::BASIS) * Self::BASIS_POW - last.leading_zeros() as usize
+            });
+        }
+        if radix.is_power_of_two() {
+            return self.digits(2).div_ceil(radix / 2);
+        }
+
+        unimplemented!("need division");
+    }
+
     pub fn ilog2(&self) -> Option<usize> {
         let mut canditate = None;
-        for (i, part) in self.data.iter().enumerate().filter(|&(_, it)| **it != 0) {
-            if canditate.is_some() || !(*part).is_power_of_two() {
+        for (i, digit) in self.digits.iter().enumerate().filter(|&(_, it)| **it != 0) {
+            if canditate.is_some() || !(*digit).is_power_of_two() {
                 return None;
             }
-            canditate = Some((*part).ilog2() as usize + i * HalfSizeNative::BITS as usize);
+            canditate = Some((*digit).ilog2() as usize + i * HalfSizeNative::BITS as usize);
         }
         canditate
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
-        self.data.iter().rev().cmp(rhs.data.iter().rev())
+        self.digits
+            .len()
+            .cmp(&rhs.digits.len())
+            .then_with(|| self.digits.iter().rev().cmp(rhs.digits.iter().rev()))
     }
     #[must_use]
     pub fn abs_clone(&self) -> Self {
@@ -378,24 +416,32 @@ impl BigInt {
 
         let mut carry = HalfSize::default();
         if partial > 0 {
-            for part in &mut lhs.data {
+            for digit in &mut lhs.digits {
                 let old_carry = carry;
-                let result = FullSize::from(*FullSize::new(*part, HalfSize::default()) << partial);
-                *part = result.lower() | old_carry;
+                let result = FullSize::from(*FullSize::new(*digit, HalfSize::default()) << partial);
+                *digit = result.lower() | old_carry;
                 carry = result.higher();
             }
         }
         let carry = Some(carry).filter(|&it| *it != 0);
         if carry.is_some() || full > 0 {
-            lhs.data = std::iter::repeat(HalfSize::default())
+            lhs.digits = std::iter::repeat(HalfSize::default())
                 .take(full)
-                .chain(lhs.data.iter().copied())
+                .chain(lhs.digits.iter().copied())
                 .chain(carry)
                 .collect();
         }
         lhs
     }
     fn shr<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b, Self>>,
+        B2: Into<Boo<'b, usize>>,
+    {
+        Self::shr_internal(lhs, rhs).0
+    }
+
+    fn shr_internal<'b, B1, B2>(lhs: B1, rhs: B2) -> (Moo<'b, Self>, BigInt)
     where
         B1: Into<Boo<'b, Self>>,
         B2: Into<Boo<'b, usize>>,
@@ -408,18 +454,28 @@ impl BigInt {
 
         let mut carry = HalfSize::default();
         if partial > 0 {
-            for part in lhs.data.iter_mut().rev() {
+            for digit in lhs.digits.iter_mut().rev() {
                 let old_carry = carry;
-                let result = FullSize::from(*FullSize::new(HalfSize::default(), *part) >> partial);
-                *part = result.higher() | old_carry;
+                let result = FullSize::from(*FullSize::new(HalfSize::default(), *digit) >> partial);
+                *digit = result.higher() | old_carry;
                 carry = result.lower();
             }
         }
+        let mut overflow;
         if full > 0 {
-            lhs.data = lhs.data.iter().copied().dropping(full).collect();
+            let mut iter = lhs.digits.iter().copied();
+            overflow = BigInt::from_iter(iter::once(carry).chain(iter.by_ref().take(full)));
+            if partial != 0 {
+                overflow >>= HalfSizeNative::BITS as usize - partial;
+            } else {
+                overflow.pop();
+            }
+            lhs.digits = iter.collect();
+        } else {
+            overflow = BigInt::from(carry);
         }
-        lhs.recalc_len();
-        lhs
+        lhs.truncate_leading_zeros();
+        (lhs, overflow)
     }
 
     fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -518,13 +574,13 @@ impl BigInt {
         either
     }
 
-    fn mul_by_part<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    fn mul_by_digit<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b, Self>>,
         B2: Into<Boo<'b, HalfSize>>,
     {
         let lhs: Boo<'_, Self> = lhs.into();
-        let rhs = rhs.into().copied();
+        let rhs: HalfSize = rhs.into().copied();
 
         if lhs.is_zero() {
             return lhs.into();
@@ -542,10 +598,10 @@ impl BigInt {
         if *rhs == 1 {
             return lhs;
         }
-        if let Some(pow) = lhs.ilog2() {
-            return Self::shl(lhs, pow);
+        if rhs.is_power_of_two() {
+            return Self::shl(lhs, rhs.ilog2() as usize);
         }
-        math_algos::mul::assign_mul_part_at_offset(&mut lhs, rhs, 0);
+        math_algos::mul::assign_mul_digit_at_offset(&mut lhs, rhs, 0);
         lhs
     }
     fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
@@ -633,7 +689,7 @@ implBigMath!(ShlAssign, shl_assign, Shl, shl, shl, usize);
 implBigMath!(ShrAssign, shr_assign, Shr, shr, shr, usize);
 implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
-implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_part, HalfSize);
+implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, HalfSize);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
 
 #[cfg(test)]
