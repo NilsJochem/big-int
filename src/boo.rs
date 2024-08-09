@@ -49,6 +49,15 @@ impl<'b, T> Boo<'b, T> {
     {
         self.into_owned(|it| *it)
     }
+    pub fn take_keep_ref(self) -> (T, Option<&'b mut T>)
+    where
+        T: Default + Clone,
+    {
+        match self {
+            Boo::BorrowedMut(mut_ref) => (std::mem::take(mut_ref), Some(mut_ref)),
+            _ => (self.cloned(), None),
+        }
+    }
 }
 impl<'b, T> Deref for Boo<'b, T> {
     type Target = T;
@@ -97,6 +106,28 @@ impl<'b, T> Moo<'b, T> {
             Moo::BorrowedMut(_) => None,
         }
     }
+    /// gives an owned instance of `T` by using `deref` on the held reference
+    pub fn into_owned(self, deref: impl FnOnce(&'b T) -> T) -> T {
+        match self {
+            Moo::Owned(t) => t,
+            Moo::BorrowedMut(t) => deref(t),
+        }
+    }
+    /// gives an owned instance of `T` by cloning the held reference
+    pub fn cloned(self) -> T
+    where
+        T: Clone,
+    {
+        self.into_owned(T::clone)
+    }
+    /// gives an owned instance of `T` by cloning the held reference
+    pub fn copied(self) -> T
+    where
+        T: Copy,
+    {
+        self.into_owned(|it| *it)
+    }
+
     pub fn expect_mut_ref(self, msg: impl AsRef<str>) -> &'b mut T {
         #[allow(clippy::expect_fun_call)]
         self.try_get_mut_ref().expect(msg.as_ref())
@@ -105,6 +136,12 @@ impl<'b, T> Moo<'b, T> {
         match self {
             Moo::Owned(_) => None,
             Moo::BorrowedMut(it) => Some(it),
+        }
+    }
+    pub fn get_mut_ref(&mut self) -> Option<&mut T> {
+        match self {
+            Moo::Owned(t) => Some(t),
+            Moo::BorrowedMut(t) => Some(t),
         }
     }
 }
