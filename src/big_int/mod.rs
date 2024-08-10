@@ -358,15 +358,7 @@ impl BigInt {
             return self.digits(2).div_ceil(radix / 2);
         }
 
-        let mut n = 2;
-        let mut r = radix;
-        let big_radix = BigInt::from(radix);
-
-        while (self / &big_radix) >= FullSize::from(r) {
-            n += 1;
-            r *= radix;
-        }
-        n
+        unimplemented!("need div");
     }
 
     pub fn is_power_of_two(&self) -> bool {
