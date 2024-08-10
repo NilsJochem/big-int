@@ -156,8 +156,6 @@ pub mod mul {
         lhs.truncate_leading_zeros();
     }
 }
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -274,11 +274,11 @@ impl<POSITIVE: primitve::UNum> FromIterator<POSITIVE> for BigInt {
             .chunks(HALF_SIZE_BYTES);
 
         Self::from_iter(binding.into_iter().map(|chunk| {
-                let mut buf = [0; HALF_SIZE_BYTES];
+            let mut buf = [0; HALF_SIZE_BYTES];
 
-                for (place, byte) in buf.iter_mut().zip(chunk) {
-                    *place = byte;
-                }
+            for (place, byte) in buf.iter_mut().zip(chunk) {
+                *place = byte;
+            }
             HalfSize::from(buf)
         }))
     }
@@ -358,15 +358,7 @@ impl BigInt {
             return self.digits(2).div_ceil(radix / 2);
         }
 
-        let mut n = 2;
-        let mut r = radix;
-        let big_radix = BigInt::from(radix);
-
-        while (self / &big_radix) >= FullSize::from(r) {
-            n += 1;
-            r *= radix;
-        }
-        n
+        unimplemented!("need div");
     }
 
     pub fn is_power_of_two(&self) -> bool {
