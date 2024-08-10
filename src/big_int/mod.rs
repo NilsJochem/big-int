@@ -2,8 +2,8 @@ use itertools::{Either, Itertools};
 use std::fmt::Write;
 use std::iter;
 use std::ops::{
-    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Mul, MulAssign,
-    Neg, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
+    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
+    Mul, MulAssign, Neg, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
 
 use crate::boo::{Boo, Moo};
@@ -274,11 +274,11 @@ impl<POSITIVE: primitve::UNum> FromIterator<POSITIVE> for BigInt {
             .chunks(HALF_SIZE_BYTES);
 
         Self::from_iter(binding.into_iter().map(|chunk| {
-                let mut buf = [0; HALF_SIZE_BYTES];
+            let mut buf = [0; HALF_SIZE_BYTES];
 
-                for (place, byte) in buf.iter_mut().zip(chunk) {
-                    *place = byte;
-                }
+            for (place, byte) in buf.iter_mut().zip(chunk) {
+                *place = byte;
+            }
             HalfSize::from(buf)
         }))
     }
@@ -692,6 +692,91 @@ impl BigInt {
             (lhs, rhs) => Moo::Owned(math_algos::mul::naive(&lhs, &rhs)),
         }
     }
+
+    fn div<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+
+        Self::assert_pair_valid(&lhs, &rhs);
+        match (lhs, rhs) {
+            (lhs, Boo::BorrowedMut(rhs)) => {
+                let rhs_value = std::mem::take(rhs);
+                let mut rhs = Moo::BorrowedMut(rhs);
+                (*&mut rhs, _) = Self::div_mod(lhs, rhs_value);
+                rhs
+            }
+            (lhs, rhs) => Self::div_mod(lhs, rhs).0,
+        }
+    }
+    #[allow(dead_code)]
+    fn rem<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+
+        Self::assert_pair_valid(&lhs, &rhs);
+        match (lhs, rhs) {
+            (Boo::BorrowedMut(lhs), rhs) => {
+                let lhs_value = std::mem::take(lhs);
+                let mut lhs = Moo::BorrowedMut(lhs);
+                (_, *&mut lhs) = Self::div_mod(lhs_value, rhs);
+                lhs
+            }
+            (lhs, rhs) => Self::div_mod(lhs, rhs).1,
+        }
+    }
+    fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> (Moo<'b, Self>, Moo<'b, Self>)
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+    {
+        let lhs: Boo<'_, Self> = lhs.into();
+        let rhs: Boo<'_, Self> = rhs.into();
+        // here both can be allowed to be &muts in which case *lhs = lhs/rhs, *rhs = lhs%rhs
+        // Self::assert_pair_valid(&lhs, &rhs);
+
+        assert!(!rhs.is_zero(), "can't divide by zero");
+
+        let (mut n, lhs) = lhs.take_keep_ref();
+        let (mut d, rhs) = rhs.take_keep_ref();
+
+        let was_negative = (n.signum * d.signum).is_negative().then(|| d.abs_clone());
+        n.abs();
+        d.abs();
+
+        let (mut q, mut r) = math_algos::div::normalized_schoolbook(n, d);
+
+        if let Some(d) = was_negative {
+            // q = -(q+1)
+            q += Self::from(1);
+            q.negate();
+
+            //r = d-r;
+            r -= Self::from(d);
+            r.negate()
+        }
+
+        let q = if let Some(lhs) = lhs {
+            *lhs = q;
+            Moo::from(lhs)
+        } else {
+            Moo::from(q)
+        };
+        let r = if let Some(rhs) = rhs {
+            *rhs = r;
+            Moo::from(rhs)
+        } else {
+            Moo::from(r)
+        };
+        (q, r)
+    }
 }
 
 macro_rules! implBigMath {
@@ -754,6 +839,8 @@ implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
 implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, HalfSize);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
+implBigMath!(DivAssign, div_assign, Div, div);
+implBigMath!(RemAssign, rem_assign, Rem, rem);
 
 #[cfg(test)]
 mod tests;

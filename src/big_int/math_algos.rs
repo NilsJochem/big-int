@@ -156,6 +156,108 @@ pub mod mul {
         lhs.truncate_leading_zeros();
     }
 }
+
+pub mod div {
+    use super::*;
+    use crate::big_int::digits::{FullSize, HalfSize, HalfSizeNative};
+
+    /// computes (lhs/rhs, lhs%rhs)
+    /// expects lhs and rhs to be non-negative and rhs to be non-zero
+    pub fn normalized_schoolbook(mut lhs: BigInt, mut rhs: BigInt) -> (BigInt, BigInt) {
+        let shift = rhs
+            .digits
+            .last()
+            .expect("can't divide by 0")
+            .leading_zeros() as usize;
+        lhs <<= shift;
+        rhs <<= shift;
+        let (q, mut r) = schoolbook(lhs, rhs);
+        r >>= shift;
+        (q, r)
+    }
+    pub(super) fn schoolbook(lhs: BigInt, rhs: BigInt) -> (BigInt, BigInt) {
+        let (m, n) = (lhs.digits.len(), rhs.digits.len());
+        assert!(
+            rhs.digits
+                .last()
+                .expect("can't divide by zero")
+                .leading_zeros()
+                == 0,
+            "base^{n}/2 <= {rhs:?} < base^{n}"
+        );
+
+        if m < n {
+            return (BigInt::from(0), lhs);
+        }
+        if m == n {
+            return if lhs < rhs {
+                (BigInt::from(0), lhs)
+            } else {
+                (BigInt::from(1), lhs - rhs)
+            };
+        }
+        if m == n + 1 {
+            return schoolbook_sub(lhs, &rhs);
+        }
+        let power = BigInt::BASIS_POW * (m - n - 1);
+        let (lhs_prime, s) = BigInt::shr_internal(lhs, power);
+        let (q_prime, r_prime) = schoolbook_sub(expect_owned(lhs_prime, "shr_internal"), &rhs);
+        assert!(s.digits.len() < (m - n));
+        let (q, r) = BigInt::div_mod((r_prime << power) + s, rhs);
+        assert!(q.digits.len() < (m - n));
+        (
+            (q_prime << power) + expect_owned(q, "div_mod"),
+            expect_owned(r, "div_mod"),
+        )
+    }
+    fn expect_owned<T: Clone>(moo: Moo<T>, op: impl AsRef<str>) -> T {
+        moo.expect_owned(format!("{} didn't get a mut ref", op.as_ref()))
+    }
+    pub(super) fn schoolbook_sub(mut lhs: BigInt, rhs: &BigInt) -> (BigInt, BigInt) {
+        let n = rhs.digits.len();
+        assert!(lhs.digits.len() <= n + 1, "0 <= {lhs:?} < base^{}", n + 1);
+        assert!(
+            rhs.digits
+                .last()
+                .expect("rhs can't be zero")
+                .leading_zeros()
+                == 0,
+            "base^{n}/2 <= {rhs:?} < base^{n}"
+        );
+
+        match lhs.cmp(rhs) {
+            std::cmp::Ordering::Less => return (BigInt::from(0), lhs.clone()),
+            std::cmp::Ordering::Equal => return (BigInt::from(1), BigInt::from(0)),
+            std::cmp::Ordering::Greater => {}
+        }
+        let rhs_times_basis = rhs << BigInt::BASIS_POW;
+        if lhs >= rhs_times_basis {
+            // let mut i = 0;
+            // while lhs >= rhs_times_basis {
+            lhs -= &rhs_times_basis;
+            //     i += 1;
+            // }
+            // if i > 0 {
+            let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
+            div_res += BigInt::from(BigInt::BASIS); // * HalfSize::from(i);
+            return (div_res, mod_res);
+            // }
+        }
+        let mut q = crate::big_int::digits::HalfSizeNative::try_from(
+            *FullSize::new(
+                lhs.digits.get(n - 1).cloned().unwrap_or_default(),
+                lhs.digits.get(n).cloned().unwrap_or_default(),
+            ) / (*rhs.digits[n - 1] as usize),
+        )
+        .unwrap_or(HalfSizeNative::MAX);
+        let mut t = rhs * HalfSize::from(q);
+        for _ in 0..=1 {
+            if t > lhs {
+                q -= 1;
+                t -= rhs;
+            }
+        }
+        return (BigInt::from(q), lhs - t);
     }
 }
 
@@ -225,6 +327,66 @@ mod tests {
             let mut lhs = BigInt::from(0);
             add::assign_same_sign(&mut lhs, &BigInt::from(1));
             assert_eq!(lhs, BigInt::from(1));
+        }
+    }
+    mod t_div {
+        mod m_schoolbook {
+
+            use super::super::super::*;
+
+            #[test]
+            fn rel_same_size() {
+                assert_eq!(
+                    div::normalized_schoolbook(
+                        BigInt::from(55402179209251644110543835108628647875u128),
+                        BigInt::from(7015904223016035028600428233219344947u128)
+                    ),
+                    (
+                        BigInt::from(7),
+                        BigInt::from(6290849648139398910340837476093233246u128)
+                    )
+                );
+            }
+
+            #[test]
+            fn differnt_size_remainder_zero() {
+                assert_eq!(
+                    div::normalized_schoolbook(
+                        BigInt::from_iter([
+                            0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
+                            0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                        ]),
+                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                    ),
+                    (
+                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
+                        BigInt::from(0)
+                    )
+                );
+            }
+            #[test]
+            fn t_schoolbook_simple() {
+                assert_eq!(
+                    div::normalized_schoolbook(
+                        BigInt::from(0x7766_5544_3322_1100u64),
+                        BigInt::from(0x1_0000_0000u64)
+                    ),
+                    (BigInt::from(0x7766_5544), BigInt::from(0x3322_1100))
+                )
+            }
+            #[test]
+            fn t_schoolbook_sub() {
+                assert_eq!(
+                    div::schoolbook_sub(
+                        BigInt::from(0xbbaa_9988_7766_5544_3322_1100u128),
+                        &BigInt::from(0x8000_0000_0000_0000u64)
+                    ),
+                    (
+                        BigInt::from(0x1_7755_3310u64),
+                        BigInt::from(0x7766_5544_3322_1100u64)
+                    )
+                )
+            }
         }
     }
 }
