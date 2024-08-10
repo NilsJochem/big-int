@@ -181,6 +181,65 @@ impl Ord for BigInt {
             .then_with(|| self.abs_ord(other))
     }
 }
+impl PartialEq<HalfSize> for BigInt {
+    fn eq(&self, other: &HalfSize) -> bool {
+        self.partial_cmp(other).is_some_and(|it| it.is_eq())
+    }
+}
+impl PartialEq<BigInt> for HalfSize {
+    fn eq(&self, other: &BigInt) -> bool {
+        other.eq(self)
+    }
+}
+impl PartialOrd<HalfSize> for BigInt {
+    fn partial_cmp(&self, other: &HalfSize) -> Option<std::cmp::Ordering> {
+        if self.signum.is_negative() {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.digits.len() > 1 {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        Some(self.digits[0].cmp(other))
+    }
+}
+impl PartialOrd<BigInt> for HalfSize {
+    fn partial_cmp(&self, other: &BigInt) -> Option<std::cmp::Ordering> {
+        other.partial_cmp(self)
+    }
+}
+impl PartialEq<FullSize> for BigInt {
+    fn eq(&self, other: &FullSize) -> bool {
+        self.partial_cmp(other).is_some_and(|it| it.is_eq())
+    }
+}
+impl PartialEq<BigInt> for FullSize {
+    fn eq(&self, other: &BigInt) -> bool {
+        other.eq(self)
+    }
+}
+impl PartialOrd<FullSize> for BigInt {
+    fn partial_cmp(&self, other: &FullSize) -> Option<std::cmp::Ordering> {
+        if self.signum.is_negative() {
+            return Some(std::cmp::Ordering::Less);
+        }
+        if self.digits.len() > 2 {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        Some(
+            FullSize::new(
+                self.digits[0],
+                self.digits.get(1).copied().unwrap_or_default(),
+            )
+            .cmp(other),
+        )
+    }
+}
+impl PartialOrd<BigInt> for FullSize {
+    fn partial_cmp(&self, other: &BigInt) -> Option<std::cmp::Ordering> {
+        other.partial_cmp(self)
+    }
+}
+
 impl From<HalfSize> for BigInt {
     fn from(value: HalfSize) -> Self {
         if *value == 0 {
@@ -283,10 +342,12 @@ impl BigInt {
         !self.is_negative() ^ !rhs.is_negative()
     }
 
-    /// currently only works with powers of two
     pub fn digits(&self, radix: usize) -> usize {
         if radix == Self::BASIS {
             return self.digits.len();
+        }
+        if self.is_zero() {
+            return 0;
         }
         if radix == 2 {
             return self.digits.last().map_or(0, |last| {
@@ -297,18 +358,20 @@ impl BigInt {
             return self.digits(2).div_ceil(radix / 2);
         }
 
-        unimplemented!("need division");
+        let mut n = 2;
+        let mut r = radix;
+        let big_radix = BigInt::from(radix);
+
+        while (self / &big_radix) >= FullSize::from(r) {
+            n += 1;
+            r *= radix;
+        }
+        n
     }
 
-    pub fn ilog2(&self) -> Option<usize> {
-        let mut canditate = None;
-        for (i, digit) in self.digits.iter().enumerate().filter(|&(_, it)| **it != 0) {
-            if canditate.is_some() || !(*digit).is_power_of_two() {
-                return None;
-            }
-            canditate = Some((*digit).ilog2() as usize + i * HalfSizeNative::BITS as usize);
-        }
-        canditate
+    pub fn is_power_of_two(&self) -> bool {
+        self.digits.last().map_or(false, |it| it.is_power_of_two())
+            && self.digits.iter().rev().skip(1).all(|&it| *it == 0)
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
         self.digits

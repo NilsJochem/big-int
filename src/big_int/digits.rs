@@ -189,6 +189,17 @@ impl PartialEq for FullSize {
 }
 impl Eq for FullSize {}
 
+impl PartialOrd for FullSize {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for FullSize {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (**self).cmp(&**other)
+    }
+}
+
 impl From<usize> for FullSize {
     fn from(native: usize) -> Self {
         // SAFTY: access to native is always possible

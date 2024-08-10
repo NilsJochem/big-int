@@ -238,18 +238,43 @@ pub mod mul {
     }
     pub struct ByPowerOfTwo;
     impl MathShortcutFlip for ByPowerOfTwo {
-        type SC = usize;
+        type SC = ();
 
         fn can_shortcut(_lhs: &BigInt, rhs: &BigInt) -> Option<Self::SC> {
-            rhs.ilog2()
+            rhs.is_power_of_two().then_some(())
         }
 
         fn do_shortcut<'b>(
             lhs: Boo<'b, BigInt>,
             rhs: Boo<'b, BigInt>,
-            pow: Self::SC,
+            (): Self::SC,
         ) -> Moo<'b, BigInt> {
             let signum = rhs.signum;
+            let pow = rhs.digits(2) - 1;
+            let mut either = super::get_lhs(lhs, rhs);
+            either.signum *= signum;
+            *either <<= pow;
+            either
+        }
+    }
+}
+pub mod div {
+    use super::*;
+    pub struct ByPowerOfTwo;
+    impl MathShortcutFlip for ByPowerOfTwo {
+        type SC = ();
+
+        fn can_shortcut(_lhs: &BigInt, rhs: &BigInt) -> Option<Self::SC> {
+            rhs.is_power_of_two().then_some(())
+        }
+
+        fn do_shortcut<'b>(
+            lhs: Boo<'b, BigInt>,
+            rhs: Boo<'b, BigInt>,
+            (): Self::SC,
+        ) -> Moo<'b, BigInt> {
+            let signum = rhs.signum;
+            let pow = rhs.digits(2) - 1;
             let mut either = super::get_lhs(lhs, rhs);
             either.signum *= signum;
             *either <<= &pow;
@@ -472,15 +497,15 @@ mod tests {
 
             #[test]
             fn can_use_shortcut_both() {
-                can_shorcut::<mul::ByPowerOfTwo>(POW2, POW2, Some(POW), Some(POW));
+                can_shorcut::<mul::ByPowerOfTwo>(POW2, POW2, Some(()), Some(()));
             }
             #[test]
             fn can_use_shortcut_rhs() {
-                can_shorcut::<mul::ByPowerOfTwo>(NON_POW2, POW2, None, Some(POW));
+                can_shorcut::<mul::ByPowerOfTwo>(NON_POW2, POW2, None, Some(()));
             }
             #[test]
             fn can_use_shortcut_lhs() {
-                can_shorcut::<mul::ByPowerOfTwo>(POW2, NON_POW2, Some(POW), None);
+                can_shorcut::<mul::ByPowerOfTwo>(POW2, NON_POW2, Some(()), None);
             }
             #[test]
             fn can_use_shortcut_none() {
@@ -492,7 +517,7 @@ mod tests {
                 test_shorcut::<mul::ByPowerOfTwo, Left>(
                     POW2,
                     NON_POW2,
-                    POW,
+                    (),
                     (NON_POW2 as u32) << (POW as u32),
                     super::OP_DBG,
                 );
@@ -502,7 +527,7 @@ mod tests {
                 test_shorcut::<mul::ByPowerOfTwo, Right>(
                     NON_POW2,
                     POW2,
-                    POW,
+                    (),
                     (NON_POW2 as u32) << (POW as u32),
                     super::OP_DBG,
                 );
@@ -512,24 +537,24 @@ mod tests {
                 test_shorcut::<mul::ByPowerOfTwo, Left>(
                     POW2,
                     POW2,
-                    POW,
+                    (),
                     (POW2 as u32) << (POW as u32),
                     super::OP_DBG,
                 );
                 test_shorcut::<mul::ByPowerOfTwo, Right>(
                     POW2,
                     POW2,
-                    POW,
+                    (),
                     (POW2 as u32) << (POW as u32),
                     super::OP_DBG,
                 );
             }
             #[test]
             fn mul_sign_pow_two() {
-                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(2, 2, 1, 4, super::OP_DBG);
-                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(-2, 2, 1, -4, super::OP_DBG);
-                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(2, -2, 1, -4, super::OP_DBG);
-                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(-2, -2, 1, 4, super::OP_DBG);
+                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(2, 2, (), 4, super::OP_DBG);
+                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(-2, 2, (), -4, super::OP_DBG);
+                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(2, -2, (), -4, super::OP_DBG);
+                test_shorcut_commte::<mul::ByPowerOfTwo, Left>(-2, -2, (), 4, super::OP_DBG);
             }
         }
     }

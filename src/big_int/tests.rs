@@ -325,23 +325,27 @@ pub(super) mod big_math {
             )
         );
     }
+    mod digits {
+        use super::*;
 
-    #[test]
-    fn digits_pow_2() {
-        let zero = BigInt::from(0x0);
-        let one = BigInt::from(0x1);
-        let two_pow_9 = BigInt::from(0x100);
-        let two_pow_9_minus_one = BigInt::from(0xff);
-        for (pow, res) in [(2, 9), (4, 5), (8, 3), (16, 2)] {
-            assert_eq!(zero.digits(pow), 0, "zero.digits({pow})");
-            assert_eq!(one.digits(pow), 1, "one.digits({pow})");
-            assert_eq!(two_pow_9.digits(pow), res, "(2^9).digits({pow})");
-            assert_eq!(
-                two_pow_9_minus_one.digits(pow),
-                res - 1,
-                "(2^9-1).digits({pow})"
-            );
+        #[test]
+        fn pow_2() {
+            let zero = BigInt::from(0x0);
+            let one = BigInt::from(0x1);
+            let two_pow_9 = BigInt::from(0x100);
+            let two_pow_9_minus_one = BigInt::from(0xff);
+            for (pow, res) in [(2, 9), (4, 5), (8, 3), (16, 2)] {
+                assert_eq!(zero.digits(pow), 0, "zero.digits({pow})");
+                assert_eq!(one.digits(pow), 1, "one.digits({pow})");
+                assert_eq!(two_pow_9.digits(pow), res, "(2^9).digits({pow})");
+                assert_eq!(
+                    two_pow_9_minus_one.digits(pow),
+                    res - 1,
+                    "(2^9-1).digits({pow})"
+                );
+            }
         }
+        // TODO test non pow 2
     }
 
     #[test]
@@ -478,10 +482,14 @@ pub(super) mod big_math {
 
     #[test]
     fn log_2() {
-        assert_eq!(BigInt::from(1).ilog2(), Some(0));
-        assert_eq!(BigInt::from(2).ilog2(), Some(1));
-        assert_eq!(BigInt::from(0x8000_0000_0000_0000u64).ilog2(), Some(63));
-        assert_eq!(BigInt::from(0x1000_0001_0000_0000u64).ilog2(), None);
-        assert_eq!(BigInt::from(0x1000_0000_1000_0000u64).ilog2(), None);
+        assert!(BigInt::from(1).is_power_of_two());
+        assert!(BigInt::from(2).is_power_of_two());
+        assert!(BigInt::from(0x8000_0000_0000_0000u64).is_power_of_two());
+        assert!(!BigInt::from(0x1000_0001_0000_0000u64).is_power_of_two());
+        assert!(!BigInt::from(0x1000_0000_1000_0000u64).is_power_of_two());
+
+        assert_eq!(BigInt::from(1).digits(2) - 1, 0);
+        assert_eq!(BigInt::from(2).digits(2) - 1, 1);
+        assert_eq!(BigInt::from(0x8000_0000_0000_0000u64).digits(2) - 1, 63);
     }
 }
