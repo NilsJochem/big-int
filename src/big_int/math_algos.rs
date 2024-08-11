@@ -143,14 +143,13 @@ pub mod mul {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::big_int::digits::HalfSize;
     mod t_mul {
         use super::*;
 
         #[test]
         fn both_big_naive() {
             assert_eq!(
-                mul::naive::<HalfSize>(
+                mul::naive::<u32>(
                     &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
                     &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
                 ),
@@ -166,7 +165,7 @@ mod tests {
 
         #[test]
         fn add_smaller() {
-            let mut lhs = BigInt::<HalfSize>::from_iter([
+            let mut lhs = BigInt::<u32>::from_iter([
                 0x0000_0000u32,
                 0x0000_0000,
                 0x0000_0000,
@@ -205,7 +204,7 @@ mod tests {
 
         #[test]
         fn assign_to_zero() {
-            let mut lhs = BigInt::<HalfSize>::from(0);
+            let mut lhs = BigInt::<u32>::from(0);
             add::assign_same_sign(&mut lhs, &BigInt::from(1));
             assert_eq!(lhs, BigInt::from(1));
         }

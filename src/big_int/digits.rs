@@ -114,7 +114,7 @@ struct WideHalfs<Half> {
     lower: Half,
 }
 
-#[allow(dead_code, clippy::undocumented_unsafe_blocks)]
+#[allow(clippy::undocumented_unsafe_blocks)]
 impl<H: Copy, W: Copy + Wide<H>> WideConvert<H, W> {
     const fn from_parts(lower: H, upper: H) -> Self {
         Self {
@@ -138,40 +138,173 @@ impl<H: Copy, W: Copy + Wide<H>> WideConvert<H, W> {
         unsafe { self.parts }
     }
 }
+#[allow(clippy::undocumented_unsafe_blocks)]
 impl<H: Copy, W: Copy + Wide<H>> std::ops::Deref for WideConvert<H, W> {
     type Target = WideHalfs<H>;
     fn deref(&self) -> &Self::Target {
         unsafe { &self.parts }
     }
 }
+#[allow(clippy::undocumented_unsafe_blocks)]
 impl<H: Copy, W: Copy + Wide<H>> std::ops::DerefMut for WideConvert<H, W> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut self.parts }
     }
 }
 
+macro_rules! implDigit {
+    ($digit:ident, $wide: ident) => {
+        impl Decomposable<Self> for $digit {
+            fn signum(&self) -> SigNum {
+                SigNum::from_uint(*self == 0)
+            }
+
+            fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator {
+                std::iter::once(self)
+            }
+
+            fn as_le_bytes<'s, 'd: 's>(
+                &'s self,
+            ) -> impl ExactSizeIterator<Item = &Self> + DoubleEndedIterator {
+                std::iter::once(self)
+            }
+        }
+        impl Digit for $digit {
+            const BYTES: usize = Self::BITS as usize / 8;
+            type Wide = $wide;
+
+            fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self> {
+                let chunks = bytes.chunks(Self::BYTES);
+                chunks
+                    .into_iter()
+                    .map(|chunk| {
+                        let mut buf = [0; Self::BYTES];
+
+                        for (place, byte) in buf.iter_mut().zip(chunk) {
+                            *place = byte;
+                        }
+                        Self::from_le_bytes(buf)
+                    })
+                    .collect_vec()
+            }
+            fn ilog2(&self) -> u32 {
+                (*self).ilog2()
+            }
+            fn is_power_of_two(&self) -> bool {
+                (*self).is_power_of_two()
+            }
+
+            fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
+                u8::try_from(*self).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
+            }
+            fn from_bool(value: bool) -> Self {
+                value as Self
+            }
+
+            fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+                self.overflowing_add(rhs)
+            }
+            fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+                self.overflowing_sub(rhs)
+            }
+        }
+
+        impl Decomposable<$digit> for $wide {
+            fn signum(&self) -> SigNum {
+                SigNum::from_uint(*self == 0)
+            }
+
+            fn into_le_bytes(self) -> impl ExactSizeIterator<Item = $digit> + DoubleEndedIterator {
+                <[_; 2]>::from(self.split_le()).into_iter()
+            }
+
+            fn as_le_bytes<'s, 'd: 's>(
+                &'s self,
+            ) -> impl ExactSizeIterator<Item = &$digit> + DoubleEndedIterator
+            where
+                HalfSize: 'd,
+            {
+                let halfs = &*WideConvert::from_wide_ref(self);
+                [&halfs.lower, &halfs.upper].into_iter()
+            }
+        }
+        impl Wide<$digit> for $wide {
+            fn widen(value: $digit) -> Self {
+                value as Self
+            }
+
+            fn new(lower: $digit, upper: $digit) -> Self {
+                WideConvert::from_parts(lower, upper).wide()
+            }
+
+            #[allow(clippy::tuple_array_conversions)]
+            fn split_le(self) -> ($digit, $digit) {
+                let halfs = WideConvert::from_wide(self).halfs();
+                (halfs.lower, halfs.upper)
+            }
+            #[allow(clippy::tuple_array_conversions)]
+            fn split_le_mut(&mut self) -> (&mut $digit, &mut $digit) {
+                let halfs: &mut WideHalfs<$digit> = &mut *WideConvert::from_wide_mut(self);
+                (&mut halfs.lower, &mut halfs.upper)
+            }
+        }
+    };
+}
+
+implDigit!(u8, u16);
+implDigit!(u16, u32);
+implDigit!(u32, u64);
+implDigit!(u64, u128);
+
 #[cfg(target_pointer_width = "64")]
-pub type HalfSize = u32;
+type HalfSizeNative = u32;
 #[cfg(target_pointer_width = "32")]
-pub type HalfSizeNative = u16;
+type HalfSizeNative = u16;
 #[cfg(target_pointer_width = "16")]
-pub type HalfSizeNative = u8;
-const _: () = {
-    #[allow(clippy::manual_assert)]
-    if HalfSize::BYTES * 2 != usize::BITS as usize / 8 {
-        panic!("what?");
+type HalfSizeNative = u8;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::From)]
+pub struct HalfSize(HalfSizeNative);
+
+impl LowerHex for HalfSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        LowerHex::fmt(&self.0, f)
     }
-};
+}
+impl UpperHex for HalfSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        UpperHex::fmt(&self.0, f)
+    }
+}
+impl BitOrAssign<&Self> for HalfSize {
+    fn bitor_assign(&mut self, rhs: &Self) {
+        self.0 |= rhs.0;
+    }
+}
+impl BitXorAssign<&Self> for HalfSize {
+    fn bitxor_assign(&mut self, rhs: &Self) {
+        self.0 ^= rhs.0;
+    }
+}
+impl BitAndAssign<&Self> for HalfSize {
+    fn bitand_assign(&mut self, rhs: &Self) {
+        self.0 &= rhs.0;
+    }
+}
+impl BitXor<&Self> for HalfSize {
+    type Output = Self;
+
+    fn bitxor(self, rhs: &Self) -> Self::Output {
+        Self(self.0 ^ rhs.0)
+    }
+}
 
 impl Decomposable<Self> for HalfSize {
     fn signum(&self) -> SigNum {
-        SigNum::from_uint(*self == 0)
+        SigNum::from_uint(self.0 == 0)
     }
-
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator {
         std::iter::once(self)
     }
-
     fn as_le_bytes<'s, 'd: 's>(
         &'s self,
     ) -> impl ExactSizeIterator<Item = &Self> + DoubleEndedIterator {
@@ -179,73 +312,66 @@ impl Decomposable<Self> for HalfSize {
     }
 }
 impl Digit for HalfSize {
-    const BYTES: usize = Self::BITS as usize / 8;
+    const BYTES: usize = HalfSizeNative::BITS as usize / 8;
     type Wide = usize;
-
     fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self> {
         let chunks = bytes.chunks(Self::BYTES);
         chunks
             .into_iter()
             .map(|chunk| {
                 let mut buf = [0; Self::BYTES];
-
                 for (place, byte) in buf.iter_mut().zip(chunk) {
                     *place = byte;
                 }
-                Self::from_le_bytes(buf)
+                Self(HalfSizeNative::from_le_bytes(buf))
             })
             .collect_vec()
     }
     fn ilog2(&self) -> u32 {
-        (*self).ilog2()
+        self.0.ilog2()
     }
     fn is_power_of_two(&self) -> bool {
-        (*self).is_power_of_two()
+        self.0.is_power_of_two()
     }
-
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
-        u8::try_from(*self).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
+        u8::try_from(self.0).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
     }
     fn from_bool(value: bool) -> Self {
-        value as Self
+        Self(value as HalfSizeNative)
     }
-
     fn overflowing_add(self, rhs: Self) -> (Self, bool) {
-        self.overflowing_add(rhs)
+        let (result, carry) = self.0.overflowing_add(rhs.0);
+        (Self(result), carry)
     }
     fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
-        self.overflowing_sub(rhs)
+        let (result, carry) = self.0.overflowing_sub(rhs.0);
+        (Self(result), carry)
     }
 }
-
 impl Decomposable<HalfSize> for usize {
     fn signum(&self) -> SigNum {
         SigNum::from_uint(*self == 0)
     }
-
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = HalfSize> + DoubleEndedIterator {
         <[_; 2]>::from(self.split_le()).into_iter()
     }
-
     fn as_le_bytes<'s, 'd: 's>(
         &'s self,
     ) -> impl ExactSizeIterator<Item = &HalfSize> + DoubleEndedIterator
     where
         HalfSize: 'd,
     {
-        let halfs = &*WideConvert::from_wide_ref(self);
+        let halfs = WideConvert::from_wide_ref(self);
         [&halfs.lower, &halfs.upper].into_iter()
     }
 }
 impl Wide<HalfSize> for usize {
     fn widen(value: HalfSize) -> Self {
-        value as Self
+        value.0 as Self
     }
-
     fn new(lower: HalfSize, upper: HalfSize) -> Self {
         WideConvert::from_parts(lower, upper).wide()
     }
-
     #[allow(clippy::tuple_array_conversions)]
     fn split_le(self) -> (HalfSize, HalfSize) {
         let halfs = WideConvert::from_wide(self).halfs();
@@ -264,12 +390,15 @@ mod tests {
 
     #[test]
     fn widening_shl() {
-        assert_eq!(0x8765_4321.widening_shl(4, 0x9), 0x8_7654_3219usize);
+        assert_eq!(
+            HalfSize(0x8765_4321).widening_shl(4, HalfSize(0x9)),
+            0x8_7654_3219usize
+        );
     }
     #[test]
     fn widening_shr() {
         assert_eq!(
-            0x8765_4321.widening_shr(4, 0x9000_0000),
+            HalfSize(0x8765_4321).widening_shr(4, HalfSize(0x9000_0000)),
             0x9876_5432_1000_0000usize
         );
     }
@@ -281,7 +410,7 @@ mod tests {
         fn load() {
             assert_eq!(
                 0x7766_5544_3322_1100usize,
-                usize::new(0x3322_1100, 0x7766_5544)
+                usize::new(HalfSize(0x3322_1100), HalfSize(0x7766_5544))
             );
         }
 
@@ -289,7 +418,7 @@ mod tests {
         fn read() {
             assert_eq!(
                 0x7766_5544_3322_1100usize.split_le(),
-                (0x3322_1100, 0x7766_5544)
+                (HalfSize(0x3322_1100), HalfSize(0x7766_5544))
             );
         }
     }
