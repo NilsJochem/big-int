@@ -1,11 +1,11 @@
 [package]
 name = "crypto"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
-derive_more = "0.99.18"
+derive_more = { version = "1.0.0", features = ["from"] }
 itertools = "0.13.0"
 
 [lints]
