@@ -99,6 +99,57 @@ pub trait Wide<Half>:
     fn split_le_mut(&mut self) -> (&mut Half, &mut Half);
 }
 
+#[derive(Clone, Copy)]
+union WideConvert<Half: Copy, Wide: Copy> {
+    parts: WideHalfs<Half>,
+    wide: Wide,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct WideHalfs<Half> {
+    #[cfg(target_endian = "little")]
+    lower: Half,
+    upper: Half,
+    #[cfg(not(target_endian = "little"))]
+    lower: Half,
+}
+
+#[allow(dead_code, clippy::undocumented_unsafe_blocks)]
+impl<H: Copy, W: Copy + Wide<H>> WideConvert<H, W> {
+    const fn from_parts(lower: H, upper: H) -> Self {
+        Self {
+            parts: WideHalfs { lower, upper },
+        }
+    }
+    const fn from_wide(wide: W) -> Self {
+        Self { wide }
+    }
+    const fn from_wide_ref(wide: &W) -> &Self {
+        unsafe { &*((std::ptr::from_ref(wide)).cast()) }
+    }
+    fn from_wide_mut(wide: &mut W) -> &mut Self {
+        unsafe { &mut *((std::ptr::from_mut(wide)).cast()) }
+    }
+
+    const fn wide(self) -> W {
+        unsafe { self.wide }
+    }
+    const fn halfs(self) -> WideHalfs<H> {
+        unsafe { self.parts }
+    }
+}
+impl<H: Copy, W: Copy + Wide<H>> std::ops::Deref for WideConvert<H, W> {
+    type Target = WideHalfs<H>;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &self.parts }
+    }
+}
+impl<H: Copy, W: Copy + Wide<H>> std::ops::DerefMut for WideConvert<H, W> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut self.parts }
+    }
+}
+
 #[cfg(target_pointer_width = "64")]
 pub type HalfSize = u32;
 #[cfg(target_pointer_width = "32")]
@@ -182,13 +233,8 @@ impl Decomposable<HalfSize> for usize {
     where
         HalfSize: 'd,
     {
-        #[allow(clippy::undocumented_unsafe_blocks)]
-        let [a, b] = unsafe { &*((std::ptr::from_ref(self)).cast()) };
-        if cfg!(target_endian = "little") {
-            [a, b].into_iter()
-        } else {
-            [b, a].into_iter()
-        }
+        let halfs = &*WideConvert::from_wide_ref(self);
+        [&halfs.lower, &halfs.upper].into_iter()
     }
 }
 impl Wide<HalfSize> for usize {
@@ -197,28 +243,18 @@ impl Wide<HalfSize> for usize {
     }
 
     fn new(lower: HalfSize, upper: HalfSize) -> Self {
-        ((upper as Self) << HalfSize::BITS as Self) + lower as Self
+        WideConvert::from_parts(lower, upper).wide()
     }
 
     #[allow(clippy::tuple_array_conversions)]
     fn split_le(self) -> (HalfSize, HalfSize) {
-        #[allow(clippy::undocumented_unsafe_blocks)]
-        let [a, b] = unsafe { std::mem::transmute::<Self, [HalfSize; 2]>(self) };
-        if cfg!(target_endian = "little") {
-            (a, b)
-        } else {
-            (b, a)
-        }
+        let halfs = WideConvert::from_wide(self).halfs();
+        (halfs.lower, halfs.upper)
     }
     #[allow(clippy::tuple_array_conversions)]
     fn split_le_mut(&mut self) -> (&mut HalfSize, &mut HalfSize) {
-        #[allow(clippy::undocumented_unsafe_blocks)]
-        let [a, b] = unsafe { &mut *((std::ptr::from_mut(self)).cast()) };
-        if cfg!(target_endian = "little") {
-            (a, b)
-        } else {
-            (b, a)
-        }
+        let halfs: &mut WideHalfs<HalfSize> = &mut *WideConvert::from_wide_mut(self);
+        (&mut halfs.lower, &mut halfs.upper)
     }
 }
 
