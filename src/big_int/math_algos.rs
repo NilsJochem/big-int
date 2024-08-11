@@ -210,20 +210,19 @@ pub mod div {
             std::cmp::Ordering::Equal => return (BigInt::from(1), BigInt::from(0)),
             std::cmp::Ordering::Greater => {}
         }
-        let rhs_times_basis = rhs << BigInt::<D>::BASIS_POW;
-        if lhs >= rhs_times_basis {
-            // let mut i = 0;
-            // while lhs >= rhs_times_basis {
-            lhs -= &rhs_times_basis;
-            //     i += 1;
-            // }
-            // if i > 0 {
-            let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
-            div_res += BigInt::from(BigInt::<D>::BASIS); // * HalfSize::from(i);
-            return (div_res, mod_res);
-            // }
+        {
+            let rhs_times_basis = rhs << BigInt::<D>::BASIS_POW;
+            let mut i = 0;
+            while lhs >= rhs_times_basis {
+                lhs -= &rhs_times_basis;
+                i += 1;
+            }
+            if i > 0 {
+                let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
+                div_res += BigInt::from(BigInt::<D>::BASIS) * BigInt::from(i);
+                return (div_res, mod_res);
+            }
         }
-
         let (res_lower, res_upper) = (D::Wide::new(
             lhs.digits.get(n - 1).copied().unwrap_or_default(),
             lhs.digits.get(n).copied().unwrap_or_default(),
@@ -236,11 +235,14 @@ pub mod div {
             D::MAX
         };
         let mut t = rhs * q;
-        for _ in 0..=1 {
-            if t > lhs {
-                (q, _) = q.overflowing_sub(D::from_bool(true));
-                t -= rhs;
+        for _ in 0..2 {
+            if t <= lhs {
+                break;
             }
+            let carry;
+            (q, carry) = q.overflowing_sub(D::from_bool(true));
+            debug_assert!(!carry, "q-1 has underflowed");
+            t -= rhs;
         }
         (BigInt::from_digit(q), lhs - t)
     }
@@ -357,10 +359,7 @@ mod tests {
                         BigInt::from(0x8765_4321u32),
                         BigInt::from(0x060d)
                     ),
-                    (
-                        BigInt::from(0x0016_6065),
-                        BigInt::from(0)
-                    )
+                    (BigInt::from(0x0016_6065), BigInt::from(0))
                 );
             }
             #[test]

@@ -503,7 +503,7 @@ impl<D: Digit> BigInt<D> {
                 overflow >>= Self::BASIS_POW - partial;
             } else {
                 overflow.digits.remove(0);
-                overflow.truncate_leading_zeros()
+                overflow.truncate_leading_zeros();
             }
             lhs.digits = iter.collect();
         } else {
