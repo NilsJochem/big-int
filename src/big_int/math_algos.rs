@@ -75,7 +75,7 @@ pub mod add {
             };
             (*digit, carry) = digit.carring_add(rhs.unwrap_or_default(), carry);
         }
-        lhs.push(carry);
+        lhs.push(D::from_bool(carry));
         if lhs.is_zero() {
             lhs.signum = rhs.signum;
         }

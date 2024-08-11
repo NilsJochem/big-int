@@ -1,5 +1,5 @@
 use super::*;
-use tests::digits::{FullSize, HalfSize};
+use tests::digits::HalfSize;
 mod create {
     use super::*;
     #[test]
@@ -28,14 +28,10 @@ mod create {
     #[test]
     fn from_u32s() {
         assert_eq!(
-            BigInt::from_iter([0x3322_1100_u32, 0x7766_5544, 0x9988]),
+            BigInt::from_iter([0x3322_1100_u32, 0x7766_5544, 0x9988, 0]),
             BigInt {
                 signum: SigNum::Positive,
-                digits: vec![
-                    HalfSize::from(0x3322_1100),
-                    HalfSize::from(0x7766_5544),
-                    HalfSize::from(0x0000_9988)
-                ]
+                digits: vec![0x3322_1100, 0x7766_5544, 0x0000_9988]
             }
         );
     }
@@ -45,11 +41,7 @@ mod create {
             BigInt::from(-0x9988_7766_5544_3322_1100_i128),
             BigInt {
                 signum: SigNum::Negative,
-                digits: vec![
-                    HalfSize::from(0x3322_1100),
-                    HalfSize::from(0x7766_5544),
-                    HalfSize::from(0x0000_9988)
-                ]
+                digits: vec![0x3322_1100, 0x7766_5544, 0x0000_9988]
             }
         );
     }
@@ -189,29 +181,6 @@ mod order {
                 .cmp(&BigInt::<HalfSize>::from(0x0001_0000_0000_0000_0000u128)),
             Ordering::Less
         )
-    }
-}
-mod full_size {
-    use super::*;
-
-    #[test]
-    fn load() {
-        assert_eq!(
-            FullSize::from(0x7766_5544_3322_1100_usize),
-            FullSize::new(HalfSize::from(0x3322_1100), HalfSize::from(0x7766_5544))
-        );
-    }
-
-    #[test]
-    fn read() {
-        assert_eq!(
-            FullSize::from(0x7766_5544_3322_1100_usize).lower(),
-            HalfSize::from(0x3322_1100)
-        );
-        assert_eq!(
-            FullSize::from(0x7766_5544_3322_1100_usize).higher(),
-            HalfSize::from(0x7766_5544)
-        );
     }
 }
 pub(super) mod big_math {
@@ -491,7 +460,7 @@ pub(super) mod big_math {
     #[test]
     fn mul_with_digit() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x0001_0000_0000_0000u64) * HalfSize::from(0x7766),
+            BigInt::<HalfSize>::from(0x0001_0000_0000_0000u64) * 0x7766,
             BigInt::<HalfSize>::from(0x7766_0000_0000_0000u64)
         )
     }

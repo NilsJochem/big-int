@@ -260,7 +260,7 @@ impl<D: Digit> BigInt<D> {
     pub fn from_digit(value: D) -> Self {
         if {
             let this = &value;
-            *this == 0u8
+            this.eq_u8(0)
         } {
             Self {
                 signum: SigNum::Zero,
@@ -288,7 +288,7 @@ impl<D: Digit> BigInt<D> {
     fn truncate_leading_zeros(&mut self) {
         while self.digits.last().is_some_and(|&it| {
             let this = &it;
-            *this == 0u8
+            this.eq_u8(0)
         }) {
             self.digits.pop();
         }
@@ -306,7 +306,7 @@ impl<D: Digit> BigInt<D> {
     }
     fn push(&mut self, value: impl Into<D>) {
         let value = value.into();
-        if value == 0 {
+        if value.eq_u8(0) {
             return;
         }
         self.digits.push(value);
@@ -322,7 +322,7 @@ impl<D: Digit> BigInt<D> {
         self.signum.is_zero()
     }
     pub fn is_abs_one(&self) -> bool {
-        self.digits.len() == 1 && self.digits[0] == 1
+        self.digits.len() == 1 && self.digits[0].eq_u8(1)
     }
     const fn is_different_sign(&self, rhs: &Self) -> bool {
         !self.is_negative() ^ !rhs.is_negative()
@@ -349,7 +349,7 @@ impl<D: Digit> BigInt<D> {
 
     pub fn is_power_of_two(&self) -> bool {
         self.digits.last().map_or(false, |it| it.is_power_of_two())
-            && self.digits.iter().rev().skip(1).all(|&it| it == 0)
+            && self.digits.iter().rev().skip(1).all(|&it| it.eq_u8(0))
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
         self.digits
@@ -465,7 +465,7 @@ impl<D: Digit> BigInt<D> {
                 (*digit, carry) = digit.widening_shl(rhs, carry).split_le();
             }
         }
-        let carry = Some(carry).filter(|&it| it != 0);
+        let carry = Some(carry).filter(|&it| !it.eq_u8(0));
         if carry.is_some() || full > 0 {
             lhs.digits = std::iter::repeat(D::default())
                 .take(full)
@@ -626,7 +626,7 @@ impl<D: Digit> BigInt<D> {
         if lhs.is_zero() {
             return lhs.into();
         }
-        if rhs == 0 {
+        if rhs.eq_u8(0) {
             return match lhs {
                 Boo::BorrowedMut(lhs) => {
                     *lhs = Self::default();
@@ -636,7 +636,7 @@ impl<D: Digit> BigInt<D> {
             };
         }
         let mut lhs = Moo::from(lhs);
-        if rhs == 1 {
+        if rhs.eq_u8(1) {
             return lhs;
         }
         if rhs.is_power_of_two() {
