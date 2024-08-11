@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 pub mod bit_math {
     use super::*;
-    pub fn bit_or_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_or_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitOrAssign::bitor_assign(digit, rhs);
         }
@@ -14,7 +14,7 @@ pub mod bit_math {
         }
     }
 
-    pub fn bit_xor_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_xor_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitXorAssign::bitxor_assign(digit, rhs);
         }
@@ -23,13 +23,13 @@ pub mod bit_math {
                 rhs.digits
                     .iter()
                     .dropping(lhs.digits.len())
-                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
+                    .map(|it| std::ops::BitXor::bitxor(D::default(), it)),
             );
         }
         lhs.truncate_leading_zeros();
     }
 
-    pub fn bit_and_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_and_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitAndAssign::bitand_assign(digit, rhs);
         }
@@ -47,7 +47,7 @@ pub mod bit_math {
 pub mod add {
     use super::*;
 
-    pub fn assign_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn assign_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         assert!(
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
@@ -59,7 +59,7 @@ pub mod add {
                 .extend(rhs.digits.iter().skip(orig_self_len).copied());
         }
 
-        let mut carry = HalfSize::default();
+        let mut carry = false;
         for elem in lhs
             .digits
             .iter_mut()
@@ -67,20 +67,13 @@ pub mod add {
         {
             let (digit, rhs) = match elem {
                 itertools::EitherOrBoth::Right(_rhs) => unreachable!("self was extendet"),
-                itertools::EitherOrBoth::Left(_digit) if *carry == 0 => {
+                itertools::EitherOrBoth::Left(_digit) if !carry => {
                     break;
                 }
                 itertools::EitherOrBoth::Left(digit) => (digit, None),
                 itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
             };
-            let result = **digit as usize + *carry as usize;
-            let result = FullSize::from(match rhs {
-                None => result,
-                Some(rhs) => result + *rhs as usize,
-            });
-
-            *digit = result.lower();
-            carry = result.higher();
+            (*digit, carry) = digit.carring_add(rhs.unwrap_or_default(), carry);
         }
         lhs.push(carry);
         if lhs.is_zero() {
@@ -93,7 +86,7 @@ pub mod add {
 pub mod sub {
     use super::*;
 
-    pub fn assign_smaller_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn assign_smaller_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         assert!(
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
@@ -108,16 +101,10 @@ pub mod sub {
                     break;
                 }
                 itertools::EitherOrBoth::Left(digit) => (digit, None),
-                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
+                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(*rhs)),
             };
 
-            let result = FullSize::from(
-                *FullSize::new(*digit, HalfSize::from(1))
-                    - carry as usize
-                    - rhs.map_or(0, |&rhs| *rhs as usize),
-            );
-            *digit = result.lower();
-            carry = *result.higher() == 0; // extra bit was needed
+            (*digit, carry) = digit.carring_sub(rhs.unwrap_or_default(), carry);
         }
 
         lhs.truncate_leading_zeros();
@@ -127,7 +114,7 @@ pub mod sub {
 pub mod mul {
     use super::*;
 
-    pub fn naive(lhs: &BigInt, rhs: &BigInt) -> BigInt {
+    pub fn naive<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> BigInt<D> {
         // try to minimize outer loops
         if lhs.digits.len() < rhs.digits.len() {
             return naive(rhs, lhs);
@@ -135,7 +122,7 @@ pub mod mul {
         let mut out = BigInt::default();
         for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
-            result <<= i * HalfSizeNative::BITS as usize;
+            result <<= i * BigInt::<D>::BASIS_POW as usize;
             out += result;
         }
 
@@ -143,14 +130,10 @@ pub mod mul {
         out.truncate_leading_zeros();
         out
     }
-    pub fn assign_mul_digit_at_offset(lhs: &mut BigInt, rhs: HalfSize, i: usize) {
-        let mut carry = HalfSize::default();
-        for elem in lhs.digits.iter_mut().skip(i) {
-            let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
-            let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
-
-            carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
-            *elem = add_result.lower();
+    pub fn assign_mul_digit_at_offset<D: Digit>(lhs: &mut BigInt<D>, rhs: D, i: usize) {
+        let mut carry = D::default();
+        for digit in lhs.digits.iter_mut().skip(i) {
+            (*digit, carry) = digit.widening_mul(rhs, carry).split_le();
         }
         lhs.digits.push(carry);
         lhs.truncate_leading_zeros();
@@ -159,13 +142,15 @@ pub mod mul {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::big_int::digits::HalfSize;
     mod t_mul {
-        use super::super::*;
+        use super::*;
 
         #[test]
         fn both_big_naive() {
             assert_eq!(
-                mul::naive(
+                mul::naive::<HalfSize>(
                     &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
                     &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
                 ),
@@ -177,11 +162,11 @@ mod tests {
         }
     }
     mod t_add {
-        use super::super::*;
+        use super::*;
 
         #[test]
         fn add_smaller() {
-            let mut lhs = BigInt::from_iter([
+            let mut lhs = BigInt::<HalfSize>::from_iter([
                 0x0000_0000_u32,
                 0x0000_0000,
                 0x0000_0000,
@@ -220,7 +205,7 @@ mod tests {
 
         #[test]
         fn assign_to_zero() {
-            let mut lhs = BigInt::from(0);
+            let mut lhs = BigInt::<HalfSize>::from(0);
             add::assign_same_sign(&mut lhs, &BigInt::from(1));
             assert_eq!(lhs, BigInt::from(1));
         }
