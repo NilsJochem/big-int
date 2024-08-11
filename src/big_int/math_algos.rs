@@ -182,9 +182,9 @@ pub mod div {
         let power = BigInt::<D>::BASIS_POW * (m - n - 1);
         let (lhs_prime, s) = BigInt::shr_internal(lhs, power);
         let (q_prime, r_prime) = schoolbook_sub(expect_owned(lhs_prime, "shr_internal"), &rhs);
-        assert!(s.digits.len() < (m - n));
+        debug_assert!(s.digits.len() < (m - n));
         let (q, r) = BigInt::div_mod((r_prime << power) + s, rhs);
-        assert!(q.digits.len() < (m - n));
+        debug_assert!(q.digits.len() < (m - n));
         (
             (q_prime << power) + expect_owned(q, "div_mod"),
             expect_owned(r, "div_mod"),
@@ -346,6 +346,19 @@ mod tests {
                     ),
                     (
                         BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
+                        BigInt::from(0)
+                    )
+                );
+            }
+            #[test]
+            fn differnt_size_remainder_zero_smaller() {
+                assert_eq!(
+                    div::normalized_schoolbook::<u8>(
+                        BigInt::from(0x8765_4321u32),
+                        BigInt::from(0x060d)
+                    ),
+                    (
+                        BigInt::from(0x0016_6065),
                         BigInt::from(0)
                     )
                 );

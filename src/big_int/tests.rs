@@ -315,6 +315,13 @@ pub(super) mod big_math {
             )
         );
     }
+    #[test]
+    fn shr_overflow_no_partial() {
+        assert_eq!(
+            BigInt::<u8>::shr_internal(BigInt::from(0x4433_2211), 16),
+            (Moo::from(BigInt::from(0x4433)), BigInt::from(0x2211))
+        );
+    }
     mod digits {
         use super::*;
 
