@@ -28,7 +28,7 @@ mod create {
     #[test]
     fn from_u32s() {
         assert_eq!(
-            BigInt::from_iter([0x3322_1100_u32, 0x7766_5544, 0x9988, 0]),
+            BigInt::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]),
             BigInt {
                 signum: SigNum::Positive,
                 digits: vec![0x3322_1100, 0x7766_5544, 0x0000_9988]
@@ -38,7 +38,7 @@ mod create {
     #[test]
     fn from_i128() {
         assert_eq!(
-            BigInt::from(-0x9988_7766_5544_3322_1100_i128),
+            BigInt::from(-0x9988_7766_5544_3322_1100i128),
             BigInt {
                 signum: SigNum::Negative,
                 digits: vec![0x3322_1100, 0x7766_5544, 0x0000_9988]
@@ -53,7 +53,7 @@ mod output {
         assert_eq!(
             format!(
                 "{:?}",
-                BigInt::<HalfSize>::from(0x0000_7766_0000_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x0000_7766_0000_5544_3322_1100u128)
             ),
             "Number { + 0x[00007766, 00005544, 33221100]}"
         );
@@ -63,14 +63,14 @@ mod output {
         assert_eq!(
             format!(
                 "{:x}",
-                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
             ),
             "99887766554433221100"
         );
         assert_eq!(
             format!(
                 "{:#x}",
-                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
             ),
             "0x99887766554433221100"
         );
@@ -78,14 +78,14 @@ mod output {
         assert_eq!(
             format!(
                 "{:x}",
-                BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)
+                BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)
             ),
             "-99887766554433221100"
         );
         assert_eq!(
             format!(
                 "{:#x}",
-                BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)
+                BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)
             ),
             "-0x99887766554433221100"
         );
@@ -93,7 +93,7 @@ mod output {
         assert_eq!(
             format!(
                 "{:0>32x}",
-                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
             ),
             "00000000000099887766554433221100"
         );
@@ -101,7 +101,7 @@ mod output {
         assert_eq!(
             format!(
                 "{:#032x}",
-                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
             ),
             "0x000000000099887766554433221100"
         );
@@ -109,14 +109,14 @@ mod output {
         assert_eq!(
             format!(
                 "{:#032x}",
-                BigInt::<HalfSize>::from(0x00ee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x00ee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
             ),
             "0xeeddccbbaa99887766554433221100"
         );
         assert_eq!(
             format!(
                 "{:#032X}",
-                BigInt::<HalfSize>::from(0x00ee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                BigInt::<HalfSize>::from(0x00ee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
             ),
             "0XEEDDCCBBAA99887766554433221100"
         );
@@ -129,47 +129,47 @@ mod order {
     #[test]
     fn same() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
-                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)),
+            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
+                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)),
             Ordering::Equal
         );
         assert_eq!(
-            BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)
-                .cmp(&BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)
+                .cmp(&BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)),
             Ordering::Equal
         );
     }
     #[test]
     fn negated() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_u128)
-                .cmp(&BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100u128)
+                .cmp(&BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)),
             Ordering::Greater
         );
         assert_eq!(
-            BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100_i128)
-                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(-0x9988_7766_5544_3322_1100i128)
+                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100i128)),
             Ordering::Less
         );
     }
     #[test]
     fn middle_diff() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x9988_8866_5544_3322_1100_u128)
-                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(0x9988_8866_5544_3322_1100u128)
+                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100i128)),
             Ordering::Greater
         );
         assert_eq!(
-            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_i128)
-                .cmp(&BigInt::<HalfSize>::from(0x9988_8866_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100i128)
+                .cmp(&BigInt::<HalfSize>::from(0x9988_8866_5544_3322_1100i128)),
             Ordering::Less
         );
     }
     #[test]
     fn same_len() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x0fff_ffff_ffff_ffff_ffff_u128)
-                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100_i128)),
+            BigInt::<HalfSize>::from(0x0fff_ffff_ffff_ffff_ffffu128)
+                .cmp(&BigInt::<HalfSize>::from(0x9988_7766_5544_3322_1100i128)),
             Ordering::Less
         );
     }
@@ -180,7 +180,7 @@ mod order {
             BigInt::<HalfSize>::from(0x7766_5544_3322_1100u64)
                 .cmp(&BigInt::<HalfSize>::from(0x0001_0000_0000_0000_0000u128)),
             Ordering::Less
-        )
+        );
     }
 }
 pub(super) mod big_math {
@@ -303,8 +303,8 @@ pub(super) mod big_math {
     #[test]
     fn shl() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211_u128) << 4,
-            BigInt::<HalfSize>::from(0x0998_8776_6554_4332_2110_u128)
+            BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211u128) << 4,
+            BigInt::<HalfSize>::from(0x0998_8776_6554_4332_2110u128)
         );
         assert_eq!(
             BigInt::<HalfSize>::from(1) << 1,
@@ -314,19 +314,19 @@ pub(super) mod big_math {
     #[test]
     fn shr() {
         assert_eq!(
-            BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211_u128) >> 4,
-            BigInt::<HalfSize>::from(0x0009_9887_7665_5443_3221_u128)
+            BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211u128) >> 4,
+            BigInt::<HalfSize>::from(0x0009_9887_7665_5443_3221u128)
         );
     }
     #[test]
     fn shr_overflow() {
         assert_eq!(
             BigInt::<HalfSize>::shr_internal(
-                BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211_u128),
+                BigInt::<HalfSize>::from(0x0099_8877_6655_4433_2211u128),
                 40
             ),
             (
-                Moo::from(BigInt::<HalfSize>::from(0x9988_7766_u32)),
+                Moo::from(BigInt::<HalfSize>::from(0x9988_7766u32)),
                 BigInt::<HalfSize>::from(0x55_4433_2211u64)
             )
         );
@@ -377,8 +377,8 @@ pub(super) mod big_math {
     #[test]
     fn add_two_negative() {
         test_op_commute(
-            -0x1122_3344_5566_7788_i128,
-            -0x8877_6655_4433_2211_i128,
+            -0x1122_3344_5566_7788i128,
+            -0x8877_6655_4433_2211i128,
             |a, b| BigInt::<HalfSize>::add(a, b),
             -0x9999_9999_9999_9999i128,
             "+",
@@ -387,15 +387,15 @@ pub(super) mod big_math {
     #[test]
     fn add() {
         test_op(
-            0x1122_3344_5566_7788_i128,
-            -0x8877_6655_4433_2211_i128,
+            0x1122_3344_5566_7788i128,
+            -0x8877_6655_4433_2211i128,
             |a, b| BigInt::<HalfSize>::sub(a, b),
             0x9999_9999_9999_9999i128,
             "-",
         );
         test_op_commute(
-            0x1122_3344_5566_7788_i128,
-            0x8877_6655_4433_2211_i128,
+            0x1122_3344_5566_7788i128,
+            0x8877_6655_4433_2211i128,
             |a, b| BigInt::<HalfSize>::add(a, b),
             0x9999_9999_9999_9999i128,
             "+",
@@ -406,16 +406,16 @@ pub(super) mod big_math {
     fn sub_big() {
         test_op(
             0x9999_9999_9999_9999i128,
-            0x8877_6655_4433_2211_i128,
+            0x8877_6655_4433_2211i128,
             |a, b| BigInt::<HalfSize>::sub(a, b),
-            0x1122_3344_5566_7788_i128,
+            0x1122_3344_5566_7788i128,
             "-",
         );
         test_op_commute(
             0x9999_9999_9999_9999i128,
-            -0x8877_6655_4433_2211_i128,
+            -0x8877_6655_4433_2211i128,
             |a, b| BigInt::<HalfSize>::add(a, b),
-            0x1122_3344_5566_7788_i128,
+            0x1122_3344_5566_7788i128,
             "+",
         );
     }
@@ -442,17 +442,17 @@ pub(super) mod big_math {
             30_000_000_700_000u128,
             60,
             |a, b| BigInt::<HalfSize>::mul(a, b),
-            1_800_000_042_000_000_u128,
+            1_800_000_042_000_000u128,
             "*",
         );
     }
     #[test]
     fn mul_one_big() {
         test_op_commute(
-            0x0fee_ddcc_bbaa_9988_7766_5544_3322_1100_u128,
+            0x0fee_ddcc_bbaa_9988_7766_5544_3322_1100u128,
             2,
             |a, b| BigInt::<HalfSize>::mul(a, b),
-            0x1fdd_bb99_7755_3310_eecc_aa88_6644_2200_u128,
+            0x1fdd_bb99_7755_3310_eecc_aa88_6644_2200u128,
             "*",
         );
     }
@@ -462,7 +462,7 @@ pub(super) mod big_math {
         assert_eq!(
             BigInt::<HalfSize>::from(0x0001_0000_0000_0000u64) * 0x7766,
             BigInt::<HalfSize>::from(0x7766_0000_0000_0000u64)
-        )
+        );
     }
 
     #[test]
@@ -475,12 +475,12 @@ pub(super) mod big_math {
     #[test]
     fn mul_both_big() {
         test_op_commute(
-            0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128,
-            0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128,
+            0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128,
+            0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128,
             |a, b| BigInt::<HalfSize>::mul(a, b),
             BigInt::<HalfSize>::from_iter([
-                0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
-                0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000u128,
+                0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222u128,
             ]),
             "*",
         );

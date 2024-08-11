@@ -122,7 +122,7 @@ pub mod mul {
         let mut out = BigInt::default();
         for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
-            result <<= i * BigInt::<D>::BASIS_POW as usize;
+            result <<= i * BigInt::<D>::BASIS_POW;
             out += result;
         }
 
@@ -151,12 +151,12 @@ mod tests {
         fn both_big_naive() {
             assert_eq!(
                 mul::naive::<HalfSize>(
-                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
-                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
                 ),
                 BigInt::from_iter([
-                    0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
-                    0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                    0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000u128,
+                    0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222u128,
                 ])
             );
         }
@@ -167,7 +167,7 @@ mod tests {
         #[test]
         fn add_smaller() {
             let mut lhs = BigInt::<HalfSize>::from_iter([
-                0x0000_0000_u32,
+                0x0000_0000u32,
                 0x0000_0000,
                 0x0000_0000,
                 0xf5d2_8c00,
@@ -179,7 +179,7 @@ mod tests {
             add::assign_same_sign(
                 &mut lhs,
                 &BigInt::from_iter([
-                    0x0000_0000_u32,
+                    0x0000_0000u32,
                     0x0000_0000,
                     0xd042_0800,
                     0x07f6_e5d4,
@@ -191,7 +191,7 @@ mod tests {
             assert_eq!(
                 lhs,
                 BigInt::from_iter([
-                    0x0000_0000_u32,
+                    0x0000_0000u32,
                     0x0000_0000,
                     0xd042_0800,
                     0xfdc9_71d4,

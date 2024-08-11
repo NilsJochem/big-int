@@ -37,7 +37,7 @@ where
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering;
     fn from_bool(value: bool) -> Self;
 
-    /// ((0, self) << rhl) | (0, in_carry) = (out_carry, res)
+    /// ((0, `self`) << `rhl`) | (0, `in_carry`) = (`out_carry`, `res`)
     /// carry should have `rhs` bits of data and is padded to the left with zeros
     fn widening_shl(self, rhs: usize, carry: Self) -> Self::Wide {
         debug_assert!(
@@ -51,7 +51,7 @@ where
         full.split_le_mut().0.bitor_assign(&carry);
         full
     }
-    /// ((self, 0) >> rhl) | (in_carry, 0) = (res, out_carry)
+    /// ((`self`, 0) >> `rhl`) | (`in_carry`, 0) = (`res`, `out_carry`)
     /// carry should have `rhs` bits of data and is padded to the right with zeros
     fn widening_shr(self, rhs: usize, carry: Self) -> Self::Wide {
         debug_assert!(
@@ -78,12 +78,11 @@ where
         let (res, carry_2) = res.overflowing_sub(Self::from_bool(in_carry));
         (res, carry_1 | carry_2)
     }
-    /// ((0, self) * (0, rhs)) + (0, carry_in) = (carry_out, result)
+    /// ((0, `self`) * (0, `rhs`)) + (0, `carry_in`) = (`carry_out`, `result`)
     fn widening_mul(self, rhs: Self, carry: Self) -> Self::Wide {
         Self::Wide::widen(self) * Self::Wide::widen(rhs) + Self::Wide::widen(carry)
     }
 }
-
 pub trait Wide<Half>:
     Ord
     + Decomposable<Half>
@@ -99,32 +98,19 @@ pub trait Wide<Half>:
     fn split_le(self) -> (Half, Half);
     fn split_le_mut(&mut self) -> (&mut Half, &mut Half);
 }
-impl Wide<HalfSize> for usize {
-    fn widen(value: HalfSize) -> Self {
-        value as Self
-    }
 
-    fn new(lower: HalfSize, upper: HalfSize) -> Self {
-        ((upper as usize) << HalfSize::BITS as usize) + lower as usize
+#[cfg(target_pointer_width = "64")]
+pub type HalfSize = u32;
+#[cfg(target_pointer_width = "32")]
+pub type HalfSizeNative = u16;
+#[cfg(target_pointer_width = "16")]
+pub type HalfSizeNative = u8;
+const _: () = {
+    #[allow(clippy::manual_assert)]
+    if HalfSize::BYTES * 2 != usize::BITS as usize / 8 {
+        panic!("what?");
     }
-
-    fn split_le(self) -> (HalfSize, HalfSize) {
-        let (a, b) = unsafe { std::mem::transmute::<usize, (HalfSize, HalfSize)>(self) };
-        if cfg!(target_endian = "little") {
-            (a, b)
-        } else {
-            (b, a)
-        }
-    }
-    fn split_le_mut(&mut self) -> (&mut HalfSize, &mut HalfSize) {
-        let (a, b) = unsafe { std::mem::transmute::<&mut usize, &mut (HalfSize, HalfSize)>(self) };
-        if cfg!(target_endian = "little") {
-            (a, b)
-        } else {
-            (b, a)
-        }
-    }
-}
+};
 
 impl Decomposable<Self> for HalfSize {
     fn signum(&self) -> SigNum {
@@ -142,11 +128,11 @@ impl Decomposable<Self> for HalfSize {
     }
 }
 impl Digit for HalfSize {
-    const BYTES: usize = HALF_SIZE_BYTES;
+    const BYTES: usize = Self::BITS as usize / 8;
     type Wide = usize;
 
     fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self> {
-        let chunks = bytes.chunks(HALF_SIZE_BYTES);
+        let chunks = bytes.chunks(Self::BYTES);
         chunks
             .into_iter()
             .map(|chunk| {
@@ -174,28 +160,12 @@ impl Digit for HalfSize {
     }
 
     fn overflowing_add(self, rhs: Self) -> (Self, bool) {
-        let (res, carry) = self.overflowing_add(rhs);
-        (res, carry)
+        self.overflowing_add(rhs)
     }
     fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
-        let (res, carry) = self.overflowing_sub(rhs);
-        (res, carry)
+        self.overflowing_sub(rhs)
     }
 }
-
-#[cfg(target_pointer_width = "64")]
-pub type HalfSize = u32;
-#[cfg(target_pointer_width = "32")]
-pub type HalfSizeNative = u16;
-#[cfg(target_pointer_width = "16")]
-pub type HalfSizeNative = u8;
-const HALF_SIZE_BYTES: usize = HalfSize::BITS as usize / 8;
-const _: () = {
-    #[allow(clippy::manual_assert)]
-    if HALF_SIZE_BYTES * 2 != usize::BITS as usize / 8 {
-        panic!("what?");
-    }
-};
 
 impl Decomposable<HalfSize> for usize {
     fn signum(&self) -> SigNum {
@@ -203,9 +173,7 @@ impl Decomposable<HalfSize> for usize {
     }
 
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = HalfSize> + DoubleEndedIterator {
-        let (lower, upper) = self.split_le();
-
-        [lower, upper].into_iter()
+        <[_; 2]>::from(self.split_le()).into_iter()
     }
 
     fn as_le_bytes<'s, 'd: 's>(
@@ -214,11 +182,42 @@ impl Decomposable<HalfSize> for usize {
     where
         HalfSize: 'd,
     {
-        let (a, b) = unsafe { std::mem::transmute::<&usize, &(HalfSize, HalfSize)>(self) };
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        let [a, b] = unsafe { &*((std::ptr::from_ref(self)).cast()) };
         if cfg!(target_endian = "little") {
             [a, b].into_iter()
         } else {
             [b, a].into_iter()
+        }
+    }
+}
+impl Wide<HalfSize> for usize {
+    fn widen(value: HalfSize) -> Self {
+        value as Self
+    }
+
+    fn new(lower: HalfSize, upper: HalfSize) -> Self {
+        ((upper as Self) << HalfSize::BITS as Self) + lower as Self
+    }
+
+    #[allow(clippy::tuple_array_conversions)]
+    fn split_le(self) -> (HalfSize, HalfSize) {
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        let [a, b] = unsafe { std::mem::transmute::<Self, [HalfSize; 2]>(self) };
+        if cfg!(target_endian = "little") {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    }
+    #[allow(clippy::tuple_array_conversions)]
+    fn split_le_mut(&mut self) -> (&mut HalfSize, &mut HalfSize) {
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        let [a, b] = unsafe { &mut *((std::ptr::from_mut(self)).cast()) };
+        if cfg!(target_endian = "little") {
+            (a, b)
+        } else {
+            (b, a)
         }
     }
 }
@@ -229,14 +228,14 @@ mod tests {
 
     #[test]
     fn widening_shl() {
-        assert_eq!(0x8765_4321.widening_shl(4, 0x9), 0x8_7654_3219usize)
+        assert_eq!(0x8765_4321.widening_shl(4, 0x9), 0x8_7654_3219usize);
     }
     #[test]
     fn widening_shr() {
         assert_eq!(
             0x8765_4321.widening_shr(4, 0x9000_0000),
             0x9876_5432_1000_0000usize
-        )
+        );
     }
 
     mod full_size {
@@ -245,7 +244,7 @@ mod tests {
         #[test]
         fn load() {
             assert_eq!(
-                0x7766_5544_3322_1100_usize,
+                0x7766_5544_3322_1100usize,
                 usize::new(0x3322_1100, 0x7766_5544)
             );
         }
@@ -253,7 +252,7 @@ mod tests {
         #[test]
         fn read() {
             assert_eq!(
-                usize::from(0x7766_5544_3322_1100_usize).split_le(),
+                0x7766_5544_3322_1100usize.split_le(),
                 (0x3322_1100, 0x7766_5544)
             );
         }

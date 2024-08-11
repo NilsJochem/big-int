@@ -208,7 +208,8 @@ impl<D: Digit> Decomposable<D> for BigInt<D> {
 
 impl<D: Digit, M: Decomposable<D>> PartialEq<M> for BigInt<D> {
     fn eq(&self, other: &M) -> bool {
-        self.partial_cmp(other).is_some_and(|it| it.is_eq())
+        self.partial_cmp(other)
+            .is_some_and(std::cmp::Ordering::is_eq)
     }
 }
 impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigInt<D> {
@@ -219,7 +220,7 @@ impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigInt<D> {
             for elem in self.digits.iter().zip_longest(digits).rev() {
                 match elem {
                     itertools::EitherOrBoth::Both(lhs, rhs) => {
-                        let ord = lhs.cmp(&rhs);
+                        let ord = lhs.cmp(rhs);
                         if ord.is_ne() {
                             return ord;
                         }
@@ -258,10 +259,7 @@ impl<PRIMITIVE: primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
 
 impl<D: Digit> BigInt<D> {
     pub fn from_digit(value: D) -> Self {
-        if {
-            let this = &value;
-            this.eq_u8(0)
-        } {
+        if value.eq_u8(0) {
             Self {
                 signum: SigNum::Zero,
                 digits: vec![],
@@ -282,14 +280,11 @@ impl<D: Digit> BigInt<D> {
         num
     }
 
-    pub const BASIS_POW: usize = (D::BYTES * 8) as usize;
+    pub const BASIS_POW: usize = (D::BYTES * 8);
     pub const BASIS: usize = 1 << Self::BASIS_POW;
 
     fn truncate_leading_zeros(&mut self) {
-        while self.digits.last().is_some_and(|&it| {
-            let this = &it;
-            this.eq_u8(0)
-        }) {
+        while self.digits.last().is_some_and(|&it| it.eq_u8(0)) {
             self.digits.pop();
         }
 
@@ -348,7 +343,7 @@ impl<D: Digit> BigInt<D> {
     }
 
     pub fn is_power_of_two(&self) -> bool {
-        self.digits.last().map_or(false, |it| it.is_power_of_two())
+        self.digits.last().map_or(false, Digit::is_power_of_two)
             && self.digits.iter().rev().skip(1).all(|&it| it.eq_u8(0))
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
@@ -456,8 +451,8 @@ impl<D: Digit> BigInt<D> {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % Self::BASIS_POW as usize;
-        let full = rhs / Self::BASIS_POW as usize;
+        let partial = rhs % Self::BASIS_POW;
+        let full = rhs / Self::BASIS_POW;
 
         let mut carry = D::default();
         if partial > 0 {
@@ -491,8 +486,8 @@ impl<D: Digit> BigInt<D> {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % Self::BASIS_POW as usize;
-        let full = rhs / Self::BASIS_POW as usize;
+        let partial = rhs % Self::BASIS_POW;
+        let full = rhs / Self::BASIS_POW;
 
         let mut carry = D::default();
         if partial > 0 {
@@ -505,7 +500,7 @@ impl<D: Digit> BigInt<D> {
             let mut iter = lhs.digits.iter().copied();
             overflow = Self::from_digits(iter::once(carry).chain(iter.by_ref().take(full)));
             if partial != 0 {
-                overflow >>= Self::BASIS_POW as usize - partial;
+                overflow >>= Self::BASIS_POW - partial;
             } else {
                 overflow.pop();
             }

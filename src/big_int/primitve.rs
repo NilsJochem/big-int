@@ -27,7 +27,9 @@ pub trait Primitive:
     type Pos: UNum<Neg = Self::Neg>;
     type Neg: INum<Pos = Self::Pos>;
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_be(self) -> Self;
+    #[allow(clippy::wrong_self_convention)]
     fn from_le(self) -> Self;
     fn to_be(self) -> Self;
     fn to_le(self) -> Self;
