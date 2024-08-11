@@ -1,5 +1,5 @@
 use itertools::{Either, Itertools};
-use std::fmt::Write;
+use std::fmt::{Debug, Write};
 use std::iter;
 use std::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
@@ -13,7 +13,7 @@ mod digits;
 mod math_algos;
 mod math_shortcuts;
 mod primitve;
-use digits::{FullSize, HalfSize, HalfSizeNative, HALF_SIZE_BYTES};
+use digits::{Decomposable, Digit, Wide};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(i8)]
@@ -42,6 +42,10 @@ impl SigNum {
         unsafe {
             std::mem::transmute::<i8, Self>(value)
         }
+    }
+    const fn from_uint(is_zero: bool) -> Self {
+        // SAFETY: either 0 or 1
+        unsafe { Self::from_i8(!is_zero as i8) }
     }
     const fn is_negative(self) -> bool {
         self.into_i8().is_negative()
@@ -85,11 +89,17 @@ impl MulAssign for SigNum {
 }
 
 trait TieBreaker {
-    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>);
+    fn decide<'b, D: Digit>(
+        lhs: Boo<'b, BigInt<D>>,
+        rhs: Boo<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Boo<'b, BigInt<D>>);
 }
 struct TieSmaller;
 impl TieBreaker for TieSmaller {
-    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>) {
+    fn decide<'b, D: Digit>(
+        lhs: Boo<'b, BigInt<D>>,
+        rhs: Boo<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Boo<'b, BigInt<D>>) {
         if *lhs <= *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -99,7 +109,10 @@ impl TieBreaker for TieSmaller {
 }
 struct TieBigger;
 impl TieBreaker for TieBigger {
-    fn decide<'b>(lhs: Boo<'b, BigInt>, rhs: Boo<'b, BigInt>) -> (BigInt, Boo<'b, BigInt>) {
+    fn decide<'b, D: Digit>(
+        lhs: Boo<'b, BigInt<D>>,
+        rhs: Boo<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Boo<'b, BigInt<D>>) {
         if *lhs > *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -108,13 +121,13 @@ impl TieBreaker for TieBigger {
     }
 }
 
-#[derive(Clone, Default, PartialEq, Eq)]
-pub struct BigInt {
+#[derive(Clone, Default)]
+pub struct BigInt<D> {
     signum: SigNum,
     /// holds the digits (in base 2^`HalfSize::BITS`) in LE order
-    digits: Vec<HalfSize>,
+    digits: Vec<D>,
 }
-impl std::fmt::Debug for BigInt {
+impl<D: Digit> std::fmt::Debug for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -126,7 +139,7 @@ impl std::fmt::Debug for BigInt {
             }
         )?;
         for (pos, elem) in self.digits.iter().rev().with_position() {
-            write!(f, "{elem:size$x}", size = HALF_SIZE_BYTES * 2)?;
+            write!(f, "{elem:0size$x}", size = Self::BASIS_POW / 4)?;
             if matches!(
                 pos,
                 itertools::Position::First | itertools::Position::Middle
@@ -142,7 +155,7 @@ impl std::fmt::Debug for BigInt {
 //         todo!("need divided / modulo")
 //     }
 // }
-impl std::fmt::LowerHex for BigInt {
+impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buf = String::new();
         for digit in self.digits.iter().rev() {
@@ -155,7 +168,7 @@ impl std::fmt::LowerHex for BigInt {
         )
     }
 }
-impl std::fmt::UpperHex for BigInt {
+impl<D: Digit> std::fmt::UpperHex for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buf = String::new();
         for digit in self.digits.iter().rev() {
@@ -169,121 +182,67 @@ impl std::fmt::UpperHex for BigInt {
     }
 }
 
-impl PartialOrd for BigInt {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for BigInt {
+impl<D: Digit> Eq for BigInt<D> {}
+impl<D: Digit> Ord for BigInt<D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl<D: Digit> Decomposable<D> for BigInt<D> {
+    fn signum(&self) -> SigNum {
         self.signum
-            .cmp(&other.signum)
-            .then_with(|| self.abs_ord(other))
     }
-}
-impl PartialEq<HalfSize> for BigInt {
-    fn eq(&self, other: &HalfSize) -> bool {
-        self.partial_cmp(other).is_some_and(|it| it.is_eq())
+
+    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator {
+        self.digits.into_iter()
     }
-}
-impl PartialEq<BigInt> for HalfSize {
-    fn eq(&self, other: &BigInt) -> bool {
-        other.eq(self)
-    }
-}
-impl PartialOrd<HalfSize> for BigInt {
-    fn partial_cmp(&self, other: &HalfSize) -> Option<std::cmp::Ordering> {
-        if self.signum.is_negative() {
-            return Some(std::cmp::Ordering::Less);
-        }
-        if self.digits.len() > 1 {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        Some(self.digits[0].cmp(other))
-    }
-}
-impl PartialOrd<BigInt> for HalfSize {
-    fn partial_cmp(&self, other: &BigInt) -> Option<std::cmp::Ordering> {
-        other.partial_cmp(self)
-    }
-}
-impl PartialEq<FullSize> for BigInt {
-    fn eq(&self, other: &FullSize) -> bool {
-        self.partial_cmp(other).is_some_and(|it| it.is_eq())
-    }
-}
-impl PartialEq<BigInt> for FullSize {
-    fn eq(&self, other: &BigInt) -> bool {
-        other.eq(self)
-    }
-}
-impl PartialOrd<FullSize> for BigInt {
-    fn partial_cmp(&self, other: &FullSize) -> Option<std::cmp::Ordering> {
-        if self.signum.is_negative() {
-            return Some(std::cmp::Ordering::Less);
-        }
-        if self.digits.len() > 2 {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        Some(
-            FullSize::new(
-                self.digits[0],
-                self.digits.get(1).copied().unwrap_or_default(),
-            )
-            .cmp(other),
-        )
-    }
-}
-impl PartialOrd<BigInt> for FullSize {
-    fn partial_cmp(&self, other: &BigInt) -> Option<std::cmp::Ordering> {
-        other.partial_cmp(self)
+
+    fn as_le_bytes<'s, 'd: 's>(&'s self) -> impl ExactSizeIterator<Item = &D> + DoubleEndedIterator
+    where
+        D: 'd,
+    {
+        self.digits.iter()
     }
 }
 
-impl From<HalfSize> for BigInt {
-    fn from(value: HalfSize) -> Self {
-        if *value == 0 {
-            Self {
-                signum: SigNum::Zero,
-                digits: vec![],
-            }
-        } else {
-            Self {
-                signum: SigNum::Positive,
-                digits: vec![value],
-            }
-        }
+impl<D: Digit, M: Decomposable<D>> PartialEq<M> for BigInt<D> {
+    fn eq(&self, other: &M) -> bool {
+        self.partial_cmp(other)
+            .is_some_and(std::cmp::Ordering::is_eq)
     }
 }
-impl FromIterator<HalfSize> for BigInt {
-    fn from_iter<T: IntoIterator<Item = HalfSize>>(iter: T) -> Self {
-        let mut num = Self::default();
-        iter.into_iter()
-            .for_each(|next| num.digits.push(next.into()));
-        num.signum = SigNum::Positive;
-        num.truncate_leading_zeros();
-        num
-    }
-}
-impl<POSITIVE: primitve::UNum> FromIterator<POSITIVE> for BigInt {
-    /// the iter should contain the digits in little endian order
-    fn from_iter<T: IntoIterator<Item = POSITIVE>>(iter: T) -> Self {
-        let binding = iter
-            .into_iter()
-            .flat_map(primitve::Primitive::to_le_bytes)
-            .chunks(HALF_SIZE_BYTES);
+impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigInt<D> {
+    fn partial_cmp(&self, other: &M) -> Option<std::cmp::Ordering> {
+        Some(self.signum.cmp(&other.signum()).then_with(|| {
+            let digits = other.as_le_bytes();
 
-        Self::from_iter(binding.into_iter().map(|chunk| {
-            let mut buf = [0; HALF_SIZE_BYTES];
-
-            for (place, byte) in buf.iter_mut().zip(chunk) {
-                *place = byte;
+            for elem in self.digits.iter().zip_longest(digits).rev() {
+                match elem {
+                    itertools::EitherOrBoth::Both(lhs, rhs) => {
+                        let ord = lhs.cmp(rhs);
+                        if ord.is_ne() {
+                            return ord;
+                        }
+                    }
+                    itertools::EitherOrBoth::Right(_) => return std::cmp::Ordering::Less,
+                    itertools::EitherOrBoth::Left(_) => return std::cmp::Ordering::Greater,
+                }
             }
-            HalfSize::from(buf)
+            std::cmp::Ordering::Equal
         }))
     }
 }
-impl<PRIMITIVE: primitve::Primitive> From<PRIMITIVE> for BigInt {
+
+impl<POSITIVE: primitve::UNum, D: Digit> FromIterator<POSITIVE> for BigInt<D> {
+    /// the iter should contain the digits in little endian order
+    fn from_iter<T: IntoIterator<Item = POSITIVE>>(iter: T) -> Self {
+        Self::from_digits(D::from_le(
+            iter.into_iter().flat_map(primitve::Primitive::to_le_bytes),
+        ))
+    }
+}
+impl<PRIMITIVE: primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
     fn from(value: PRIMITIVE) -> Self {
         match value.select_sign() {
             Either::Left(pos) => iter::once(pos).collect(),
@@ -298,12 +257,34 @@ impl<PRIMITIVE: primitve::Primitive> From<PRIMITIVE> for BigInt {
     }
 }
 
-impl BigInt {
-    pub const BASIS_POW: usize = HalfSizeNative::BITS as usize;
+impl<D: Digit> BigInt<D> {
+    pub fn from_digit(value: D) -> Self {
+        if value.eq_u8(0) {
+            Self {
+                signum: SigNum::Zero,
+                digits: vec![],
+            }
+        } else {
+            Self {
+                signum: SigNum::Positive,
+                digits: vec![value],
+            }
+        }
+    }
+    pub fn from_digits(iter: impl IntoIterator<Item = D>) -> Self {
+        let mut num = Self {
+            signum: SigNum::Positive,
+            digits: iter.into_iter().collect_vec(),
+        };
+        num.truncate_leading_zeros();
+        num
+    }
+
+    pub const BASIS_POW: usize = (D::BYTES * 8);
     pub const BASIS: usize = 1 << Self::BASIS_POW;
 
     fn truncate_leading_zeros(&mut self) {
-        while self.digits.last().is_some_and(|&it| *it == 0) {
+        while self.digits.last().is_some_and(|&it| it.eq_u8(0)) {
             self.digits.pop();
         }
 
@@ -318,9 +299,9 @@ impl BigInt {
         self.digits.pop();
         self.truncate_leading_zeros();
     }
-    fn push(&mut self, value: impl Into<HalfSize>) {
+    fn push(&mut self, value: impl Into<D>) {
         let value = value.into();
-        if *value == 0 {
+        if value.eq_u8(0) {
             return;
         }
         self.digits.push(value);
@@ -336,7 +317,7 @@ impl BigInt {
         self.signum.is_zero()
     }
     pub fn is_abs_one(&self) -> bool {
-        self.digits.len() == 1 && *self.digits[0] == 1
+        self.digits.len() == 1 && self.digits[0].eq_u8(1)
     }
     const fn is_different_sign(&self, rhs: &Self) -> bool {
         !self.is_negative() ^ !rhs.is_negative()
@@ -351,7 +332,7 @@ impl BigInt {
         }
         if radix == 2 {
             return self.digits.last().map_or(0, |last| {
-                self.digits(Self::BASIS) * Self::BASIS_POW - last.leading_zeros() as usize
+                (self.digits(Self::BASIS) - 1) * Self::BASIS_POW + last.ilog2() as usize + 1
             });
         }
         if radix.is_power_of_two() {
@@ -362,8 +343,8 @@ impl BigInt {
     }
 
     pub fn is_power_of_two(&self) -> bool {
-        self.digits.last().map_or(false, |it| it.is_power_of_two())
-            && self.digits.iter().rev().skip(1).all(|&it| *it == 0)
+        self.digits.last().map_or(false, Digit::is_power_of_two)
+            && self.digits.iter().rev().skip(1).all(|&it| it.eq_u8(0))
     }
     pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
         self.digits
@@ -400,6 +381,7 @@ impl BigInt {
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
         T: TieBreaker,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -427,6 +409,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
             lhs,
@@ -438,6 +421,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
             lhs,
@@ -450,6 +434,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieSmaller>(
             lhs,
@@ -466,21 +451,18 @@ impl BigInt {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % HalfSizeNative::BITS as usize;
-        let full = rhs / HalfSizeNative::BITS as usize;
+        let partial = rhs % Self::BASIS_POW;
+        let full = rhs / Self::BASIS_POW;
 
-        let mut carry = HalfSize::default();
+        let mut carry = D::default();
         if partial > 0 {
             for digit in &mut lhs.digits {
-                let old_carry = carry;
-                let result = FullSize::from(*FullSize::new(*digit, HalfSize::default()) << partial);
-                *digit = result.lower() | old_carry;
-                carry = result.higher();
+                (*digit, carry) = digit.widening_shl(rhs, carry).split_le();
             }
         }
-        let carry = Some(carry).filter(|&it| *it != 0);
+        let carry = Some(carry).filter(|&it| !it.eq_u8(0));
         if carry.is_some() || full > 0 {
-            lhs.digits = std::iter::repeat(HalfSize::default())
+            lhs.digits = std::iter::repeat(D::default())
                 .take(full)
                 .chain(lhs.digits.iter().copied())
                 .chain(carry)
@@ -496,7 +478,7 @@ impl BigInt {
         Self::shr_internal(lhs, rhs).0
     }
 
-    fn shr_internal<'b, B1, B2>(lhs: B1, rhs: B2) -> (Moo<'b, Self>, BigInt)
+    fn shr_internal<'b, B1, B2>(lhs: B1, rhs: B2) -> (Moo<'b, Self>, Self)
     where
         B1: Into<Boo<'b, Self>>,
         B2: Into<Boo<'b, usize>>,
@@ -504,30 +486,27 @@ impl BigInt {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % HalfSizeNative::BITS as usize;
-        let full = rhs / HalfSizeNative::BITS as usize;
+        let partial = rhs % Self::BASIS_POW;
+        let full = rhs / Self::BASIS_POW;
 
-        let mut carry = HalfSize::default();
+        let mut carry = D::default();
         if partial > 0 {
             for digit in lhs.digits.iter_mut().rev() {
-                let old_carry = carry;
-                let result = FullSize::from(*FullSize::new(HalfSize::default(), *digit) >> partial);
-                *digit = result.higher() | old_carry;
-                carry = result.lower();
+                (carry, *digit) = digit.widening_shr(partial, carry).split_le();
             }
         }
         let mut overflow;
         if full > 0 {
             let mut iter = lhs.digits.iter().copied();
-            overflow = BigInt::from_iter(iter::once(carry).chain(iter.by_ref().take(full)));
+            overflow = Self::from_digits(iter::once(carry).chain(iter.by_ref().take(full)));
             if partial != 0 {
-                overflow >>= HalfSizeNative::BITS as usize - partial;
+                overflow >>= Self::BASIS_POW - partial;
             } else {
                 overflow.pop();
             }
             lhs.digits = iter.collect();
         } else {
-            overflow = BigInt::from(carry);
+            overflow = Self::from_digit(carry);
         }
         lhs.truncate_leading_zeros();
         (lhs, overflow)
@@ -537,6 +516,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -574,6 +554,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -632,15 +613,15 @@ impl BigInt {
     fn mul_by_digit<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b, Self>>,
-        B2: Into<Boo<'b, HalfSize>>,
+        B2: Into<Boo<'b, D>>,
     {
         let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: HalfSize = rhs.into().copied();
+        let rhs: D = rhs.into().copied();
 
         if lhs.is_zero() {
             return lhs.into();
         }
-        if *rhs == 0 {
+        if rhs.eq_u8(0) {
             return match lhs {
                 Boo::BorrowedMut(lhs) => {
                     *lhs = Self::default();
@@ -650,7 +631,7 @@ impl BigInt {
             };
         }
         let mut lhs = Moo::from(lhs);
-        if *rhs == 1 {
+        if rhs.eq_u8(1) {
             return lhs;
         }
         if rhs.is_power_of_two() {
@@ -663,6 +644,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -689,6 +671,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -697,8 +680,9 @@ impl BigInt {
         match (lhs, rhs) {
             (lhs, Boo::BorrowedMut(rhs)) => {
                 let rhs_value = std::mem::take(rhs);
+                let (result, _) = Self::div_mod(lhs, rhs_value);
                 let mut rhs = Moo::BorrowedMut(rhs);
-                (*&mut rhs, _) = Self::div_mod(lhs, rhs_value);
+                *rhs = result.expect_owned("didn't get mut ref");
                 rhs
             }
             (lhs, rhs) => Self::div_mod(lhs, rhs).0,
@@ -709,6 +693,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -717,8 +702,9 @@ impl BigInt {
         match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
                 let lhs_value = std::mem::take(lhs);
+                let (_, result) = Self::div_mod(lhs_value, rhs);
                 let mut lhs = Moo::BorrowedMut(lhs);
-                (_, *&mut lhs) = Self::div_mod(lhs_value, rhs);
+                *lhs = result.expect_owned("did'nt hat mut ref");
                 lhs
             }
             (lhs, rhs) => Self::div_mod(lhs, rhs).1,
@@ -728,6 +714,7 @@ impl BigInt {
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
     {
         let lhs: Boo<'_, Self> = lhs.into();
         let rhs: Boo<'_, Self> = rhs.into();
@@ -751,8 +738,8 @@ impl BigInt {
             q.negate();
 
             //r = d-r;
-            r -= Self::from(d);
-            r.negate()
+            r -= d;
+            r.negate();
         }
 
         let q = if let Some(lhs) = lhs {
@@ -773,48 +760,48 @@ impl BigInt {
 
 macro_rules! implBigMath {
     ($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident) => {
-        implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigInt);
+        implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigInt<D>);
     };
-    ($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident, $ref_func:ident, $rhs: ident) => {
-        impl $($trait)::*<$rhs> for BigInt {
-            implBigMath!(body $func, $ref_func, $rhs);
+    ($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident, $ref_func:ident, $rhs: ident$(<$gen:ident>)?) => {
+        impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+            implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
         }
-        impl $($trait)::*<&$rhs> for BigInt {
-            implBigMath!(body $func, $ref_func, &$rhs);
+        impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+            implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
         }
-        impl $($trait)::*<$rhs> for &BigInt {
-            implBigMath!(body $func, $ref_func, $rhs);
+        impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for &BigInt<D> {
+            implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
         }
-        impl $($trait)::*<&$rhs> for &BigInt {
-            implBigMath!(body $func, $ref_func, &$rhs);
+        impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for &BigInt<D> {
+            implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
         }
-        impl $($assign_trait)::*<$rhs> for BigInt {
-            fn $assign_func(&mut self, rhs: $rhs) {
+        impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+            fn $assign_func(&mut self, rhs: $rhs$(<$gen>)?) {
                 BigInt::$ref_func(self, rhs).expect_mut_ref("did give &mut, shouldn't get result");
             }
         }
-        impl $($assign_trait)::*<&$rhs> for BigInt {
-            fn $assign_func(&mut self, rhs: &$rhs) {
+        impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+            fn $assign_func(&mut self, rhs: &$rhs$(<$gen>)?) {
                 BigInt::$ref_func(self, rhs).expect_mut_ref("did give &mut, shouldn't get result");
             }
         }
     };
-    (body $func:tt, $ref_func:ident, $rhs:tt) => {
-        type Output = BigInt;
-        fn $func(self, rhs: $rhs) -> Self::Output {
+    (body $func:tt, $ref_func:ident, $rhs:ident$(<$gen:ident>)?) => {
+        type Output = BigInt<D>;
+        fn $func(self, rhs: $rhs$(<$gen>)?) -> Self::Output {
             BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
         }
     };
-    (body $func:tt, $ref_func:ident, &$rhs:tt) => {
-        type Output = BigInt;
-        fn $func(self, rhs: &$rhs) -> Self::Output {
+    (body $func:tt, $ref_func:ident, &$rhs:ident$(<$gen:ident>)?) => {
+        type Output = BigInt<D>;
+        fn $func(self, rhs: &$rhs$(<$gen>)?) -> Self::Output {
             BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
         }
     };
 }
 
 // no `std::ops::Not`, cause implied zeros to the left would need to be flipped
-impl Neg for BigInt {
+impl<D: Digit> Neg for BigInt<D> {
     type Output = Self;
 
     fn neg(mut self) -> Self::Output {
@@ -829,7 +816,7 @@ implBigMath!(ShlAssign, shl_assign, Shl, shl, shl, usize);
 implBigMath!(ShrAssign, shr_assign, Shr, shr, shr, usize);
 implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
-implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, HalfSize);
+implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
 implBigMath!(DivAssign, div_assign, Div, div);
 implBigMath!(RemAssign, rem_assign, Rem, rem);

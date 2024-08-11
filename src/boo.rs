@@ -138,10 +138,10 @@ impl<'b, T> Moo<'b, T> {
             Moo::BorrowedMut(it) => Some(it),
         }
     }
-    pub fn get_mut_ref(&mut self) -> Option<&mut T> {
+    pub fn get_mut_ref(&mut self) -> &mut T {
         match self {
-            Moo::Owned(t) => Some(t),
-            Moo::BorrowedMut(t) => Some(t),
+            Moo::Owned(t) => t,
+            Moo::BorrowedMut(t) => t,
         }
     }
 }

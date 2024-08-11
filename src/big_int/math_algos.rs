@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 pub mod bit_math {
     use super::*;
-    pub fn bit_or_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_or_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitOrAssign::bitor_assign(digit, rhs);
         }
@@ -14,7 +14,7 @@ pub mod bit_math {
         }
     }
 
-    pub fn bit_xor_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_xor_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitXorAssign::bitxor_assign(digit, rhs);
         }
@@ -23,13 +23,13 @@ pub mod bit_math {
                 rhs.digits
                     .iter()
                     .dropping(lhs.digits.len())
-                    .map(|it| std::ops::BitXor::bitxor(HalfSize::default(), it)),
+                    .map(|it| std::ops::BitXor::bitxor(D::default(), it)),
             );
         }
         lhs.truncate_leading_zeros();
     }
 
-    pub fn bit_and_assign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn bit_and_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
             std::ops::BitAndAssign::bitand_assign(digit, rhs);
         }
@@ -47,7 +47,7 @@ pub mod bit_math {
 pub mod add {
     use super::*;
 
-    pub fn assign_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn assign_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         assert!(
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
@@ -59,7 +59,7 @@ pub mod add {
                 .extend(rhs.digits.iter().skip(orig_self_len).copied());
         }
 
-        let mut carry = HalfSize::default();
+        let mut carry = false;
         for elem in lhs
             .digits
             .iter_mut()
@@ -67,22 +67,15 @@ pub mod add {
         {
             let (digit, rhs) = match elem {
                 itertools::EitherOrBoth::Right(_rhs) => unreachable!("self was extendet"),
-                itertools::EitherOrBoth::Left(_digit) if *carry == 0 => {
+                itertools::EitherOrBoth::Left(_digit) if !carry => {
                     break;
                 }
                 itertools::EitherOrBoth::Left(digit) => (digit, None),
                 itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
             };
-            let result = **digit as usize + *carry as usize;
-            let result = FullSize::from(match rhs {
-                None => result,
-                Some(rhs) => result + *rhs as usize,
-            });
-
-            *digit = result.lower();
-            carry = result.higher();
+            (*digit, carry) = digit.carring_add(rhs.unwrap_or_default(), carry);
         }
-        lhs.push(carry);
+        lhs.push(D::from_bool(carry));
         if lhs.is_zero() {
             lhs.signum = rhs.signum;
         }
@@ -93,7 +86,7 @@ pub mod add {
 pub mod sub {
     use super::*;
 
-    pub fn assign_smaller_same_sign(lhs: &mut BigInt, rhs: &BigInt) {
+    pub fn assign_smaller_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         assert!(
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
             "lhs and rhs had differend signs"
@@ -108,16 +101,10 @@ pub mod sub {
                     break;
                 }
                 itertools::EitherOrBoth::Left(digit) => (digit, None),
-                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(rhs)),
+                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(*rhs)),
             };
 
-            let result = FullSize::from(
-                *FullSize::new(*digit, HalfSize::from(1))
-                    - carry as usize
-                    - rhs.map_or(0, |&rhs| *rhs as usize),
-            );
-            *digit = result.lower();
-            carry = *result.higher() == 0; // extra bit was needed
+            (*digit, carry) = digit.carring_sub(rhs.unwrap_or_default(), carry);
         }
 
         lhs.truncate_leading_zeros();
@@ -127,7 +114,7 @@ pub mod sub {
 pub mod mul {
     use super::*;
 
-    pub fn naive(lhs: &BigInt, rhs: &BigInt) -> BigInt {
+    pub fn naive<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> BigInt<D> {
         // try to minimize outer loops
         if lhs.digits.len() < rhs.digits.len() {
             return naive(rhs, lhs);
@@ -135,7 +122,7 @@ pub mod mul {
         let mut out = BigInt::default();
         for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
-            result <<= i * HalfSizeNative::BITS as usize;
+            result <<= i * BigInt::<D>::BASIS_POW;
             out += result;
         }
 
@@ -143,14 +130,10 @@ pub mod mul {
         out.truncate_leading_zeros();
         out
     }
-    pub fn assign_mul_digit_at_offset(lhs: &mut BigInt, rhs: HalfSize, i: usize) {
-        let mut carry = HalfSize::default();
-        for elem in lhs.digits.iter_mut().skip(i) {
-            let mul_result = FullSize::from((**elem) as usize * (*rhs) as usize);
-            let add_result = FullSize::from((*mul_result.lower() as usize) + (*carry as usize));
-
-            carry = HalfSize::from(*mul_result.higher() + *add_result.higher());
-            *elem = add_result.lower();
+    pub fn assign_mul_digit_at_offset<D: Digit>(lhs: &mut BigInt<D>, rhs: D, i: usize) {
+        let mut carry = D::default();
+        for digit in lhs.digits.iter_mut().skip(i) {
+            (*digit, carry) = digit.widening_mul(rhs, carry).split_le();
         }
         lhs.digits.push(carry);
         lhs.truncate_leading_zeros();
@@ -159,30 +142,27 @@ pub mod mul {
 
 pub mod div {
     use super::*;
-    use crate::big_int::digits::{FullSize, HalfSize, HalfSizeNative};
 
     /// computes (lhs/rhs, lhs%rhs)
     /// expects lhs and rhs to be non-negative and rhs to be non-zero
-    pub fn normalized_schoolbook(mut lhs: BigInt, mut rhs: BigInt) -> (BigInt, BigInt) {
-        let shift = rhs
-            .digits
-            .last()
-            .expect("can't divide by 0")
-            .leading_zeros() as usize;
+    pub fn normalized_schoolbook<D: Digit>(
+        mut lhs: BigInt<D>,
+        mut rhs: BigInt<D>,
+    ) -> (BigInt<D>, BigInt<D>) {
+        let shift = BigInt::<D>::BASIS_POW
+            - (rhs.digits.last().expect("can't divide by 0").ilog2() as usize + 1);
         lhs <<= shift;
         rhs <<= shift;
         let (q, mut r) = schoolbook(lhs, rhs);
         r >>= shift;
         (q, r)
     }
-    pub(super) fn schoolbook(lhs: BigInt, rhs: BigInt) -> (BigInt, BigInt) {
+    #[allow(clippy::many_single_char_names)]
+    pub(super) fn schoolbook<D: Digit>(lhs: BigInt<D>, rhs: BigInt<D>) -> (BigInt<D>, BigInt<D>) {
         let (m, n) = (lhs.digits.len(), rhs.digits.len());
-        assert!(
-            rhs.digits
-                .last()
-                .expect("can't divide by zero")
-                .leading_zeros()
-                == 0,
+        assert_eq!(
+            rhs.digits.last().expect("can't divide by zero").ilog2(),
+            (BigInt::<D>::BASIS_POW) as u32 - 1,
             "base^{n}/2 <= {rhs:?} < base^{n}"
         );
 
@@ -199,7 +179,7 @@ pub mod div {
         if m == n + 1 {
             return schoolbook_sub(lhs, &rhs);
         }
-        let power = BigInt::BASIS_POW * (m - n - 1);
+        let power = BigInt::<D>::BASIS_POW * (m - n - 1);
         let (lhs_prime, s) = BigInt::shr_internal(lhs, power);
         let (q_prime, r_prime) = schoolbook_sub(expect_owned(lhs_prime, "shr_internal"), &rhs);
         assert!(s.digits.len() < (m - n));
@@ -213,15 +193,15 @@ pub mod div {
     fn expect_owned<T: Clone>(moo: Moo<T>, op: impl AsRef<str>) -> T {
         moo.expect_owned(format!("{} didn't get a mut ref", op.as_ref()))
     }
-    pub(super) fn schoolbook_sub(mut lhs: BigInt, rhs: &BigInt) -> (BigInt, BigInt) {
+    pub(super) fn schoolbook_sub<D: Digit>(
+        mut lhs: BigInt<D>,
+        rhs: &BigInt<D>,
+    ) -> (BigInt<D>, BigInt<D>) {
         let n = rhs.digits.len();
         assert!(lhs.digits.len() <= n + 1, "0 <= {lhs:?} < base^{}", n + 1);
-        assert!(
-            rhs.digits
-                .last()
-                .expect("rhs can't be zero")
-                .leading_zeros()
-                == 0,
+        assert_eq!(
+            rhs.digits.last().expect("rhs can't be zero").ilog2(),
+            BigInt::<D>::BASIS_POW as u32 - 1,
             "base^{n}/2 <= {rhs:?} < base^{n}"
         );
 
@@ -230,7 +210,7 @@ pub mod div {
             std::cmp::Ordering::Equal => return (BigInt::from(1), BigInt::from(0)),
             std::cmp::Ordering::Greater => {}
         }
-        let rhs_times_basis = rhs << BigInt::BASIS_POW;
+        let rhs_times_basis = rhs << BigInt::<D>::BASIS_POW;
         if lhs >= rhs_times_basis {
             // let mut i = 0;
             // while lhs >= rhs_times_basis {
@@ -239,54 +219,60 @@ pub mod div {
             // }
             // if i > 0 {
             let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
-            div_res += BigInt::from(BigInt::BASIS); // * HalfSize::from(i);
+            div_res += BigInt::from(BigInt::<D>::BASIS); // * HalfSize::from(i);
             return (div_res, mod_res);
             // }
         }
-        let mut q = crate::big_int::digits::HalfSizeNative::try_from(
-            *FullSize::new(
-                lhs.digits.get(n - 1).cloned().unwrap_or_default(),
-                lhs.digits.get(n).cloned().unwrap_or_default(),
-            ) / (*rhs.digits[n - 1] as usize),
-        )
-        .unwrap_or(HalfSizeNative::MAX);
-        let mut t = rhs * HalfSize::from(q);
+
+        let (res_lower, res_upper) = (D::Wide::new(
+            lhs.digits.get(n - 1).copied().unwrap_or_default(),
+            lhs.digits.get(n).copied().unwrap_or_default(),
+        ) / D::Wide::widen(rhs.digits[n - 1]))
+        .split_le();
+
+        let mut q = if res_upper.eq_u8(0) {
+            res_lower
+        } else {
+            D::MAX
+        };
+        let mut t = rhs * q;
         for _ in 0..=1 {
             if t > lhs {
-                q -= 1;
+                (q, _) = q.overflowing_sub(D::from_bool(true));
                 t -= rhs;
             }
         }
-        return (BigInt::from(q), lhs - t);
+        (BigInt::from_digit(q), lhs - t)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     mod t_mul {
-        use super::super::*;
+        use super::*;
 
         #[test]
         fn both_big_naive() {
             assert_eq!(
-                mul::naive(
-                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
-                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                mul::naive::<u32>(
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
+                    &BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
                 ),
                 BigInt::from_iter([
-                    0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
-                    0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                    0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000u128,
+                    0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222u128,
                 ])
             );
         }
     }
     mod t_add {
-        use super::super::*;
+        use super::*;
 
         #[test]
         fn add_smaller() {
-            let mut lhs = BigInt::from_iter([
-                0x0000_0000_u32,
+            let mut lhs = BigInt::<u32>::from_iter([
+                0x0000_0000u32,
                 0x0000_0000,
                 0x0000_0000,
                 0xf5d2_8c00,
@@ -298,7 +284,7 @@ mod tests {
             add::assign_same_sign(
                 &mut lhs,
                 &BigInt::from_iter([
-                    0x0000_0000_u32,
+                    0x0000_0000u32,
                     0x0000_0000,
                     0xd042_0800,
                     0x07f6_e5d4,
@@ -310,7 +296,7 @@ mod tests {
             assert_eq!(
                 lhs,
                 BigInt::from_iter([
-                    0x0000_0000_u32,
+                    0x0000_0000u32,
                     0x0000_0000,
                     0xd042_0800,
                     0xfdc9_71d4,
@@ -324,7 +310,7 @@ mod tests {
 
         #[test]
         fn assign_to_zero() {
-            let mut lhs = BigInt::from(0);
+            let mut lhs = BigInt::<u32>::from(0);
             add::assign_same_sign(&mut lhs, &BigInt::from(1));
             assert_eq!(lhs, BigInt::from(1));
         }
@@ -337,13 +323,13 @@ mod tests {
             #[test]
             fn rel_same_size() {
                 assert_eq!(
-                    div::normalized_schoolbook(
-                        BigInt::from(55402179209251644110543835108628647875u128),
-                        BigInt::from(7015904223016035028600428233219344947u128)
+                    div::normalized_schoolbook::<u32>(
+                        BigInt::from(55_402_179_209_251_644_110_543_835_108_628_647_875u128),
+                        BigInt::from(7_015_904_223_016_035_028_600_428_233_219_344_947u128)
                     ),
                     (
                         BigInt::from(7),
-                        BigInt::from(6290849648139398910340837476093233246u128)
+                        BigInt::from(6_290_849_648_139_398_910_340_837_476_093_233_246u128)
                     )
                 );
             }
@@ -351,15 +337,15 @@ mod tests {
             #[test]
             fn differnt_size_remainder_zero() {
                 assert_eq!(
-                    div::normalized_schoolbook(
+                    div::normalized_schoolbook::<u32>(
                         BigInt::from_iter([
-                            0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000_u128,
-                            0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222_u128,
+                            0x3343_2fd7_16cc_d713_5f99_9f4e_8521_0000u128,
+                            0xffdd_bcbf_06b5_eed3_8628_ddc7_06bf_1222u128,
                         ]),
-                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128)
+                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128)
                     ),
                     (
-                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100_u128),
+                        BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
                         BigInt::from(0)
                     )
                 );
@@ -367,17 +353,17 @@ mod tests {
             #[test]
             fn t_schoolbook_simple() {
                 assert_eq!(
-                    div::normalized_schoolbook(
+                    div::normalized_schoolbook::<u32>(
                         BigInt::from(0x7766_5544_3322_1100u64),
                         BigInt::from(0x1_0000_0000u64)
                     ),
                     (BigInt::from(0x7766_5544), BigInt::from(0x3322_1100))
-                )
+                );
             }
             #[test]
             fn t_schoolbook_sub() {
                 assert_eq!(
-                    div::schoolbook_sub(
+                    div::schoolbook_sub::<u32>(
                         BigInt::from(0xbbaa_9988_7766_5544_3322_1100u128),
                         &BigInt::from(0x8000_0000_0000_0000u64)
                     ),
@@ -385,7 +371,7 @@ mod tests {
                         BigInt::from(0x1_7755_3310u64),
                         BigInt::from(0x7766_5544_3322_1100u64)
                     )
-                )
+                );
             }
         }
     }
