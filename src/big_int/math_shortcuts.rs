@@ -216,7 +216,50 @@ pub mod mul {
     }
 }
 pub mod div {
+    use crate::big_int::SigNum;
+
     use super::*;
+    pub struct Smaller;
+    impl MathShortcut<Left> for Smaller {
+        type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
+
+        fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+            lhs.abs_ord(rhs).is_le()
+        }
+
+        fn do_shortcut<'b, D: Digit>(
+            lhs: Boo<'b, BigInt<D>>,
+            rhs: Boo<'b, BigInt<D>>,
+        ) -> Self::RES<'b, D> {
+            let signum = rhs.signum;
+            let (mut r, lhs) = lhs.take_keep_ref();
+            r.signum *= signum;
+            (
+                Moo::from_with_value(lhs, BigInt::from(0)),
+                Moo::from_with_value(rhs, r),
+            )
+        }
+    }
+    pub struct Same;
+    impl MathShortcut<Left> for Same {
+        type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
+
+        fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+            lhs.abs_ord(rhs).is_eq()
+        }
+
+        fn do_shortcut<'b, D: Digit>(
+            lhs: Boo<'b, BigInt<D>>,
+            rhs: Boo<'b, BigInt<D>>,
+        ) -> Self::RES<'b, D> {
+            let signum = lhs.signum * rhs.signum;
+            debug_assert_ne!(signum, SigNum::Zero);
+            (
+                Moo::from_with_value(lhs, BigInt::from(signum.into_i8())),
+                Moo::from_with_value(rhs, BigInt::from(0)),
+            )
+        }
+    }
     pub struct ByPowerOfTwo;
     impl MathShortcut<Right> for ByPowerOfTwo {
         type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
@@ -233,16 +276,7 @@ pub mod div {
             let pow = rhs.digits(2) - 1;
             let (mut q, r) = BigInt::shr_internal(lhs, pow);
             q.signum *= signum;
-            (
-                q,
-                match rhs {
-                    Boo::Owned(_) | Boo::Borrowed(_) => Moo::Owned(r),
-                    Boo::BorrowedMut(rhs) => {
-                        *rhs = r;
-                        Moo::BorrowedMut(rhs)
-                    }
-                },
-            )
+            (q, Moo::from_with_value(rhs, r))
         }
     }
 }

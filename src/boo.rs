@@ -16,6 +16,14 @@ impl<'b, T> From<Moo<'b, T>> for Boo<'b, T> {
         }
     }
 }
+impl<'b, T> From<Boo<'b, T>> for Option<&'b mut T> {
+    fn from(val: Boo<'b, T>) -> Self {
+        match val {
+            Boo::BorrowedMut(t) => Some(t),
+            Boo::Borrowed(_) | Boo::Owned(_) => None,
+        }
+    }
+}
 
 impl<'b, T> Boo<'b, T> {
     /// gives an owned instance of `T` by using `deref` on the held reference
@@ -100,6 +108,16 @@ impl<'b, T> Moo<'b, T> {
         #[allow(clippy::expect_fun_call)]
         self.try_get_owned().expect(msg.as_ref())
     }
+
+    pub fn from_with_value(maybe_ref: impl Into<Option<&'b mut T>>, value: T) -> Self {
+        match maybe_ref.into() {
+            Some(mut_ref) => {
+                *mut_ref = value;
+                Moo::BorrowedMut(mut_ref)
+            }
+            None => Moo::Owned(value),
+        }
+    }
     pub fn try_get_owned(self) -> Option<T> {
         match self {
             Moo::Owned(it) => Some(it),
@@ -128,17 +146,17 @@ impl<'b, T> Moo<'b, T> {
         self.into_owned(|it| *it)
     }
 
-    pub fn expect_mut_ref(self, msg: impl AsRef<str>) -> &'b mut T {
+    pub fn expect_mut(self, msg: impl AsRef<str>) -> &'b mut T {
         #[allow(clippy::expect_fun_call)]
-        self.try_get_mut_ref().expect(msg.as_ref())
+        self.try_get_mut().expect(msg.as_ref())
     }
-    pub fn try_get_mut_ref(self) -> Option<&'b mut T> {
+    pub fn try_get_mut(self) -> Option<&'b mut T> {
         match self {
             Moo::Owned(_) => None,
             Moo::BorrowedMut(it) => Some(it),
         }
     }
-    pub fn get_mut_ref(&mut self) -> &mut T {
+    pub fn get_mut(&mut self) -> &mut T {
         match self {
             Moo::Owned(t) => t,
             Moo::BorrowedMut(t) => t,

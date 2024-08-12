@@ -680,11 +680,8 @@ impl<D: Digit> BigInt<D> {
         Self::assert_pair_valid(&lhs, &rhs);
         match (lhs, rhs) {
             (lhs, Boo::BorrowedMut(rhs)) => {
-                let rhs_value = std::mem::take(rhs);
-                let (result, _) = Self::div_mod(lhs, rhs_value);
-                let mut rhs = Moo::BorrowedMut(rhs);
-                *rhs = result.expect_owned("didn't get mut ref");
-                rhs
+                let (result, _) = Self::div_mod(lhs, std::mem::take(rhs));
+                Moo::from_with_value(rhs, result.expect_owned("did'nt hat mut ref"))
             }
             (lhs, rhs) => Self::div_mod(lhs, rhs).0,
         }
@@ -702,11 +699,8 @@ impl<D: Digit> BigInt<D> {
         Self::assert_pair_valid(&lhs, &rhs);
         match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
-                let lhs_value = std::mem::take(lhs);
-                let (_, result) = Self::div_mod(lhs_value, rhs);
-                let mut lhs = Moo::BorrowedMut(lhs);
-                *lhs = result.expect_owned("did'nt hat mut ref");
-                lhs
+                let (_, result) = Self::div_mod(std::mem::take(lhs), rhs);
+                Moo::from_with_value(lhs, result.expect_owned("did'nt hat mut ref"))
             }
             (lhs, rhs) => Self::div_mod(lhs, rhs).1,
         }
@@ -727,6 +721,8 @@ impl<D: Digit> BigInt<D> {
         math_shortcuts::try_all!(
             lhs,
             rhs,
+            left math_shortcuts::div::Smaller,
+            left math_shortcuts::div::Same,
             right math_shortcuts::div::ByPowerOfTwo,
         );
 
@@ -749,19 +745,7 @@ impl<D: Digit> BigInt<D> {
             r.negate();
         }
 
-        let q = if let Some(lhs) = lhs {
-            *lhs = q;
-            Moo::from(lhs)
-        } else {
-            Moo::from(q)
-        };
-        let r = if let Some(rhs) = rhs {
-            *rhs = r;
-            Moo::from(rhs)
-        } else {
-            Moo::from(r)
-        };
-        (q, r)
+        (Moo::from_with_value(lhs, q), Moo::from_with_value(rhs, r))
     }
 }
 
@@ -784,12 +768,12 @@ macro_rules! implBigMath {
         }
         impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
             fn $assign_func(&mut self, rhs: $rhs$(<$gen>)?) {
-                BigInt::$ref_func(self, rhs).expect_mut_ref("did give &mut, shouldn't get result");
+                BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
             }
         }
         impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
             fn $assign_func(&mut self, rhs: &$rhs$(<$gen>)?) {
-                BigInt::$ref_func(self, rhs).expect_mut_ref("did give &mut, shouldn't get result");
+                BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
             }
         }
     };
