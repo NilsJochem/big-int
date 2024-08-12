@@ -724,6 +724,12 @@ impl<D: Digit> BigInt<D> {
 
         assert!(!rhs.is_zero(), "can't divide by zero");
 
+        math_shortcuts::try_all!(
+            lhs,
+            rhs,
+            right math_shortcuts::div::ByPowerOfTwo,
+        );
+
         let (mut n, lhs) = lhs.take_keep_ref();
         let (mut d, rhs) = rhs.take_keep_ref();
 
