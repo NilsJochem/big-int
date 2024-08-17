@@ -172,6 +172,12 @@ mod order {
             Ordering::Less
         );
     }
+
+    #[test]
+    fn cmp_0() {
+        assert_eq!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)), Ordering::Less);
+        assert!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)).is_le());
+    }
 }
 pub(super) mod big_math {
 
@@ -326,23 +332,6 @@ pub(super) mod big_math {
         use super::*;
 
         #[test]
-        fn pow_2() {
-            let zero = BigInt::<u32>::from(0x0);
-            let one = BigInt::<u32>::from(0x1);
-            let two_pow_9 = BigInt::<u32>::from(0x100);
-            let two_pow_9_minus_one = BigInt::<u32>::from(0xff);
-            for (pow, res) in [(2, 9), (4, 5), (8, 3), (16, 2)] {
-                assert_eq!(zero.digits(pow), 0, "zero.digits({pow})");
-                assert_eq!(one.digits(pow), 1, "one.digits({pow})");
-                assert_eq!(two_pow_9.digits(pow), res, "(2^9).digits({pow})");
-                assert_eq!(
-                    two_pow_9_minus_one.digits(pow),
-                    res - 1,
-                    "(2^9-1).digits({pow})"
-                );
-            }
-        }
-        #[test]
         fn radix() {
             assert_eq!(
                 Radix::<u8>::try_from(2),
@@ -365,6 +354,41 @@ pub(super) mod big_math {
                 Radix::<u32>::try_from(0x0001_0000_0000),
                 Ok(Radix::DigitBase)
             );
+        }
+        #[test]
+        fn pow_2() {
+            let zero = BigInt::<u32>::from(0x0);
+            let one = BigInt::<u32>::from(0x1);
+            let two_pow_9 = BigInt::<u32>::from(0x100);
+            let two_pow_9_minus_one = BigInt::<u32>::from(0xff);
+            for (pow, res) in [(2, 9), (4, 5), (8, 3), (16, 2)] {
+                assert_eq!(zero.digits(pow), 0, "zero.digits({pow})");
+                assert_eq!(one.digits(pow), 1, "one.digits({pow})");
+                assert_eq!(two_pow_9.digits(pow), res, "(2^9).digits({pow})");
+                assert_eq!(
+                    two_pow_9_minus_one.digits(pow),
+                    res - 1,
+                    "(2^9-1).digits({pow})"
+                );
+            }
+        }
+        #[test]
+        fn pow_3_minus_one() {
+            assert_eq!(BigInt::<u8>::from_digit(2).try_digits(3), Ok(1));
+            assert_eq!(BigInt::<u8>::from_digit(8).try_digits(3), Ok(2));
+            assert_eq!(BigInt::<u8>::from_digit(25).try_digits(3), Ok(3));
+        }
+        #[test]
+        fn pow_3() {
+            assert_eq!(BigInt::<u8>::from_digit(3).try_digits(3), Ok(2));
+            assert_eq!(BigInt::<u8>::from_digit(9).try_digits(3), Ok(3));
+            assert_eq!(BigInt::<u8>::from_digit(27).try_digits(3), Ok(4));
+        }
+        #[test]
+        fn pow_3_plus_one() {
+            assert_eq!(BigInt::<u8>::from_digit(4).try_digits(3), Ok(2));
+            assert_eq!(BigInt::<u8>::from_digit(10).try_digits(3), Ok(3));
+            assert_eq!(BigInt::<u8>::from_digit(28).try_digits(3), Ok(4));
         }
         // TODO test non pow 2
     }
@@ -501,6 +525,16 @@ pub(super) mod big_math {
         );
     }
 
+    #[test]
+    fn div_same() {
+        assert_eq!(
+            BigInt::<u8>::div_mod(BigInt::from_digit(10), BigInt::from_digit(10)),
+            (
+                Moo::Owned(BigInt::from_digit(1)),
+                Moo::Owned(BigInt::from_digit(0))
+            )
+        );
+    }
     #[test]
     fn log_2() {
         assert!(BigInt::<u32>::from(1).is_power_of_two());
