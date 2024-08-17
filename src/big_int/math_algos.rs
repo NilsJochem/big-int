@@ -4,42 +4,28 @@ use itertools::Itertools;
 
 pub mod bit_math {
     use super::*;
-    pub fn bit_or_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
+    fn op_assign_zipped<'b, D: 'b>(
+        lhs: &mut BigInt<D>,
+        rhs: &'b BigInt<D>,
+        op: impl for<'a> Fn(&'a mut D, &'b D),
+    ) {
         for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
-            std::ops::BitOrAssign::bitor_assign(digit, rhs);
-        }
-        if lhs.digits.len() < rhs.digits.len() {
-            lhs.digits
-                .extend(rhs.digits.iter().dropping(lhs.digits.len()));
+            op(digit, rhs);
         }
     }
 
+    pub fn bit_or_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
+        op_assign_zipped(lhs, rhs, std::ops::BitOrAssign::bitor_assign);
+        lhs.digits.extend(rhs.digits.iter().skip(lhs.digits.len()));
+    }
     pub fn bit_xor_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
-        for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
-            std::ops::BitXorAssign::bitxor_assign(digit, rhs);
-        }
-        if lhs.digits.len() < rhs.digits.len() {
-            lhs.digits.extend(
-                rhs.digits
-                    .iter()
-                    .dropping(lhs.digits.len())
-                    .map(|it| std::ops::BitXor::bitxor(D::default(), it)),
-            );
-        }
+        op_assign_zipped(lhs, rhs, std::ops::BitXorAssign::bitxor_assign);
+        lhs.digits.extend(rhs.digits.iter().skip(lhs.digits.len()));
         lhs.truncate_leading_zeros();
     }
-
     pub fn bit_and_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
-        for (digit, rhs) in lhs.digits.iter_mut().zip(rhs.digits.iter()) {
-            std::ops::BitAndAssign::bitand_assign(digit, rhs);
-        }
-
-        if lhs.digits.len() > rhs.digits.len() {
-            let to_remove = lhs.digits.len() - rhs.digits.len();
-            for _ in 0..to_remove {
-                lhs.pop();
-            }
-        }
+        op_assign_zipped(lhs, rhs, std::ops::BitAndAssign::bitand_assign);
+        lhs.digits.truncate(rhs.digits.len());
         lhs.truncate_leading_zeros();
     }
 }

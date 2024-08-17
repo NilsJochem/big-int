@@ -295,10 +295,6 @@ impl<D: Digit> BigInt<D> {
             assert!(!self.signum.is_zero(), "found {self:?} with Signnum::Zero");
         }
     }
-    fn pop(&mut self) {
-        self.digits.pop();
-        self.truncate_leading_zeros();
-    }
     fn push(&mut self, value: impl Into<D>) {
         let value = value.into();
         if value.eq_u8(0) {
