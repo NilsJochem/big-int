@@ -599,7 +599,7 @@ impl<D: Digit> BigInt<D> {
             overflow = Self::from_digits(iter::once(carry).chain(iter.by_ref().take(full)));
             if partial != 0 {
                 overflow >>= D::BASIS_POW - partial;
-            } else {
+            } else if !overflow.is_zero() {
                 overflow.digits.remove(0);
                 overflow.truncate_leading_zeros();
             }
