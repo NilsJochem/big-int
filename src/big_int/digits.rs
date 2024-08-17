@@ -17,7 +17,7 @@ pub trait Decomposable<D> {
 /// A 'Digit' for a Bigint
 /// is assumed to be exactly stored as a number of bytes (its basis is 2^8n for some Interger n)
 pub trait Digit:
-    Copy + Default + Debug + Eq + Ord + Decomposable<Self> + LowerHex + UpperHex
+    Copy + Default + Debug + Eq + Ord + Decomposable<Self> + LowerHex + UpperHex + From<u8> + From<bool>
 where
     for<'r> Self: BitOrAssign<&'r Self>
         + BitAndAssign<&'r Self>
@@ -36,7 +36,6 @@ where
         self.cmp_u8(other).is_eq()
     }
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering;
-    fn from_bool(value: bool) -> Self;
 
     /// ((0, `self`) << `rhl`) | (0, `in_carry`) = (`out_carry`, `res`)
     /// carry should have `rhs` bits of data and is padded to the left with zeros
@@ -70,13 +69,13 @@ where
     fn overflowing_add(self, rhs: Self) -> (Self, bool);
     fn carring_add(self, rhs: Self, in_carry: bool) -> (Self, bool) {
         let (res, carry_1) = self.overflowing_add(rhs);
-        let (res, carry_2) = res.overflowing_add(Self::from_bool(in_carry));
+        let (res, carry_2) = res.overflowing_add(Self::from(in_carry));
         (res, carry_1 | carry_2)
     }
     fn overflowing_sub(self, rhs: Self) -> (Self, bool);
     fn carring_sub(self, rhs: Self, in_carry: bool) -> (Self, bool) {
         let (res, carry_1) = self.overflowing_sub(rhs);
-        let (res, carry_2) = res.overflowing_sub(Self::from_bool(in_carry));
+        let (res, carry_2) = res.overflowing_sub(Self::from(in_carry));
         (res, carry_1 | carry_2)
     }
     /// ((0, `self`) * (0, `rhs`)) + (0, `carry_in`) = (`carry_out`, `result`)
@@ -200,9 +199,6 @@ macro_rules! implDigit {
             fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
                 u8::try_from(*self).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
             }
-            fn from_bool(value: bool) -> Self {
-                value as Self
-            }
 
             fn overflowing_add(self, rhs: Self) -> (Self, bool) {
                 self.overflowing_add(rhs)
@@ -301,6 +297,28 @@ impl BitXor<&Self> for HalfSize {
     }
 }
 
+impl From<u8> for HalfSize {
+    fn from(value: u8) -> Self {
+        Self(value as HalfSizeNative)
+    }
+}
+impl From<bool> for HalfSize {
+    fn from(value: bool) -> Self {
+        Self(value as HalfSizeNative)
+    }
+}
+
+impl PartialOrd<u8> for HalfSize {
+    fn partial_cmp(&self, other: &u8) -> Option<std::cmp::Ordering> {
+        self.partial_cmp(&Self::from(*other))
+    }
+}
+impl PartialEq<u8> for HalfSize {
+    fn eq(&self, other: &u8) -> bool {
+        self.eq(&Self::from(*other))
+    }
+}
+
 impl Decomposable<Self> for HalfSize {
     fn signum(&self) -> SigNum {
         SigNum::from_uint(self.0 == 0)
@@ -339,9 +357,6 @@ impl Digit for HalfSize {
     }
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
         u8::try_from(self.0).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
-    }
-    fn from_bool(value: bool) -> Self {
-        Self(value as HalfSizeNative)
     }
     fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let (result, carry) = self.0.overflowing_add(rhs.0);

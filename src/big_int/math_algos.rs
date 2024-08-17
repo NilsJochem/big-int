@@ -60,7 +60,7 @@ pub mod add {
             };
             (*lhs_digit, carry) = lhs_digit.carring_add(rhs_digit, carry);
         }
-        lhs.push(D::from_bool(carry));
+        lhs.push(carry);
         if lhs.is_zero() {
             lhs.signum = rhs.signum;
         }
@@ -228,7 +228,7 @@ pub mod div {
                 break;
             }
             let carry;
-            (q, carry) = q.overflowing_sub(D::from_bool(true));
+            (q, carry) = q.overflowing_sub(D::from(true));
             debug_assert!(!carry, "q-1 has underflowed");
             t -= rhs;
         }
