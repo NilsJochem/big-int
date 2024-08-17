@@ -7,7 +7,7 @@ pub enum Boo<'b, T> {
     Borrowed(&'b T),
     BorrowedMut(&'b mut T),
 }
-
+// Into Boo
 impl<'b, T> From<Moo<'b, T>> for Boo<'b, T> {
     fn from(value: Moo<'b, T>) -> Self {
         match value {
@@ -16,11 +16,33 @@ impl<'b, T> From<Moo<'b, T>> for Boo<'b, T> {
         }
     }
 }
+
+// From Boo
 impl<'b, T> From<Boo<'b, T>> for Option<&'b mut T> {
     fn from(val: Boo<'b, T>) -> Self {
         match val {
             Boo::BorrowedMut(t) => Some(t),
             Boo::Borrowed(_) | Boo::Owned(_) => None,
+        }
+    }
+}
+impl<'b, T> Deref for Boo<'b, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Boo::Owned(t) => t,
+            Boo::Borrowed(t) => t,
+            Boo::BorrowedMut(t) => t,
+        }
+    }
+}
+impl<'b, T> AsRef<T> for Boo<'b, T> {
+    fn as_ref(&self) -> &T {
+        match self {
+            Boo::Owned(t) => t,
+            Boo::Borrowed(t) => t,
+            Boo::BorrowedMut(t) => t,
         }
     }
 }
@@ -67,26 +89,6 @@ impl<'b, T> Boo<'b, T> {
         }
     }
 }
-impl<'b, T> Deref for Boo<'b, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Boo::Owned(t) => t,
-            Boo::Borrowed(t) => t,
-            Boo::BorrowedMut(t) => t,
-        }
-    }
-}
-impl<'b, T> AsRef<T> for Boo<'b, T> {
-    fn as_ref(&self) -> &T {
-        match self {
-            Boo::Owned(t) => t,
-            Boo::Borrowed(t) => t,
-            Boo::BorrowedMut(t) => t,
-        }
-    }
-}
 
 /// Mutable referenec Or Owned
 #[derive(Debug, PartialEq, Eq, derive_more::From)]
@@ -103,6 +105,26 @@ impl<'b, T: Clone> From<Boo<'b, T>> for Moo<'b, T> {
         }
     }
 }
+
+impl<'b, T> Deref for Moo<'b, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Moo::Owned(it) => it,
+            Moo::BorrowedMut(it) => it,
+        }
+    }
+}
+impl<'b, T> DerefMut for Moo<'b, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Moo::Owned(it) => it,
+            Moo::BorrowedMut(it) => it,
+        }
+    }
+}
+
 impl<'b, T> Moo<'b, T> {
     pub fn expect_owned(self, msg: impl AsRef<str>) -> T {
         #[allow(clippy::expect_fun_call)]
@@ -160,24 +182,6 @@ impl<'b, T> Moo<'b, T> {
         match self {
             Moo::Owned(t) => t,
             Moo::BorrowedMut(t) => t,
-        }
-    }
-}
-impl<'b, T> Deref for Moo<'b, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Moo::Owned(it) => it,
-            Moo::BorrowedMut(it) => it,
-        }
-    }
-}
-impl<'b, T> DerefMut for Moo<'b, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Moo::Owned(it) => it,
-            Moo::BorrowedMut(it) => it,
         }
     }
 }
