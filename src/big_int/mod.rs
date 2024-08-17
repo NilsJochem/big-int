@@ -339,7 +339,6 @@ impl<D: Digit> BigInt<D> {
         num
     }
 
-    pub const BASIS_POW: usize = (D::BYTES * 8);
     const NONZERO_ONE: NonZero<usize> = {
         // SAFETY: 1 is non zero
         unsafe { NonZero::new_unchecked(1) }
@@ -399,7 +398,7 @@ impl<D: Digit> BigInt<D> {
         match radix.try_into()? {
             Radix::DigitBase => Ok(self.digits.len()),
             Radix::PowerOfTwo(Self::NONZERO_ONE) => Ok(self.digits.last().map_or(0, |last| {
-                (self.try_digits(Radix::DigitBase).unwrap() - 1) * Self::BASIS_POW
+                (self.try_digits(Radix::DigitBase).unwrap() - 1) * D::BASIS_POW
                     + last.ilog2() as usize
                     + 1
             })),
@@ -523,8 +522,8 @@ impl<D: Digit> BigInt<D> {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % Self::BASIS_POW;
-        let full = rhs / Self::BASIS_POW;
+        let partial = rhs % D::BASIS_POW;
+        let full = rhs / D::BASIS_POW;
 
         let mut carry = D::default();
         if partial > 0 {
@@ -558,8 +557,8 @@ impl<D: Digit> BigInt<D> {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
 
-        let partial = rhs % Self::BASIS_POW;
-        let full = rhs / Self::BASIS_POW;
+        let partial = rhs % D::BASIS_POW;
+        let full = rhs / D::BASIS_POW;
 
         let mut carry = D::default();
         if partial > 0 {
@@ -572,7 +571,7 @@ impl<D: Digit> BigInt<D> {
             let mut iter = lhs.digits.iter().copied();
             overflow = Self::from_digits(iter::once(carry).chain(iter.by_ref().take(full)));
             if partial != 0 {
-                overflow >>= Self::BASIS_POW - partial;
+                overflow >>= D::BASIS_POW - partial;
             } else {
                 overflow.digits.remove(0);
                 overflow.truncate_leading_zeros();

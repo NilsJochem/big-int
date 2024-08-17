@@ -110,7 +110,7 @@ pub mod mul {
         let mut out = BigInt::default();
         for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
-            result <<= i * BigInt::<D>::BASIS_POW;
+            result <<= i * D::BASIS_POW;
             out += result;
         }
 
@@ -137,8 +137,8 @@ pub mod div {
         mut lhs: BigInt<D>,
         mut rhs: BigInt<D>,
     ) -> (BigInt<D>, BigInt<D>) {
-        let shift = BigInt::<D>::BASIS_POW
-            - (rhs.digits.last().expect("can't divide by 0").ilog2() as usize + 1);
+        let shift =
+            D::BASIS_POW - (rhs.digits.last().expect("can't divide by 0").ilog2() as usize + 1);
         lhs <<= shift;
         rhs <<= shift;
         let (q, mut r) = schoolbook(lhs, rhs);
@@ -150,7 +150,7 @@ pub mod div {
         let (m, n) = (lhs.digits.len(), rhs.digits.len());
         assert_eq!(
             rhs.digits.last().expect("can't divide by zero").ilog2(),
-            (BigInt::<D>::BASIS_POW) as u32 - 1,
+            (D::BASIS_POW) as u32 - 1,
             "base^{n}/2 <= {rhs:?} < base^{n}"
         );
 
@@ -167,7 +167,7 @@ pub mod div {
         if m == n + 1 {
             return schoolbook_sub(lhs, &rhs);
         }
-        let power = BigInt::<D>::BASIS_POW * (m - n - 1);
+        let power = D::BASIS_POW * (m - n - 1);
         let (lhs_prime, s) = BigInt::shr_internal(lhs, power);
         let (q_prime, r_prime) = schoolbook_sub(expect_owned(lhs_prime, "shr_internal"), &rhs);
         debug_assert!(s.digits.len() < (m - n));
@@ -189,7 +189,7 @@ pub mod div {
         assert!(lhs.digits.len() <= n + 1, "0 <= {lhs:?} < base^{}", n + 1);
         assert_eq!(
             rhs.digits.last().expect("rhs can't be zero").ilog2(),
-            BigInt::<D>::BASIS_POW as u32 - 1,
+            D::BASIS_POW as u32 - 1,
             "base^{n}/2 <= {rhs:?} < base^{n}"
         );
 
@@ -199,7 +199,7 @@ pub mod div {
             std::cmp::Ordering::Greater => {}
         }
         {
-            let rhs_times_basis = rhs << BigInt::<D>::BASIS_POW;
+            let rhs_times_basis = rhs << D::BASIS_POW;
             let mut i = 0;
             while lhs >= rhs_times_basis {
                 lhs -= &rhs_times_basis;
@@ -207,7 +207,7 @@ pub mod div {
             }
             if i > 0 {
                 let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
-                div_res += BigInt::from(i) << BigInt::<D>::BASIS_POW;
+                div_res += BigInt::from(i) << D::BASIS_POW;
                 return (div_res, mod_res);
             }
         }

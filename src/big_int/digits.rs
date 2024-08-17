@@ -25,6 +25,7 @@ where
         + BitXor<&'r Self, Output = Self>,
 {
     const BYTES: usize;
+    const BASIS_POW: usize = (Self::BYTES * 8);
     const MAX: Self;
     type Wide: Wide<Self>;
 
