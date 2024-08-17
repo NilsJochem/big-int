@@ -32,10 +32,10 @@ where
     fn ilog2(&self) -> u32;
     fn is_power_of_two(&self) -> bool;
 
+    fn cmp_u8(&self, other: u8) -> std::cmp::Ordering;
     fn eq_u8(&self, other: u8) -> bool {
         self.cmp_u8(other).is_eq()
     }
-    fn cmp_u8(&self, other: u8) -> std::cmp::Ordering;
 
     /// ((0, `self`) << `rhl`) | (0, `in_carry`) = (`out_carry`, `res`)
     /// carry should have `rhs` bits of data and is padded to the left with zeros
@@ -249,7 +249,7 @@ macro_rules! implDigit {
         }
     };
 }
-
+// TODO add wrapper struct to add direct Ord<u8>
 implDigit!(u8, u16);
 implDigit!(u16, u32);
 implDigit!(u32, u64);
