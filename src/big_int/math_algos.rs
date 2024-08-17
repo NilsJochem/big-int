@@ -71,6 +71,8 @@ pub mod add {
 pub mod sub {
     use super::*;
 
+    /// calculates `lhs` -= `rhs`, both need to have the same sign, but either may be zero
+    /// lhs needs to be the longer number
     pub fn assign_smaller_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         assert!(
             lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
@@ -79,17 +81,18 @@ pub mod sub {
         assert!(lhs.abs_ord(rhs).is_ge(), "lhs is smaller than rhs");
 
         let mut carry = false;
-        for elem in lhs.digits.iter_mut().zip_longest(&rhs.digits) {
-            let (digit, rhs) = match elem {
-                itertools::EitherOrBoth::Right(_rhs) => unreachable!("lhs is always bigger"),
-                itertools::EitherOrBoth::Left(_digit) if !carry => {
+        for elem in lhs.digits.iter_mut().zip_longest(rhs.digits.iter()) {
+            use itertools::EitherOrBoth as E;
+            let (lhs_digit, rhs_digit) = match elem {
+                E::Right(_rhs) => unreachable!("lhs is always bigger"),
+                E::Left(_digit) if !carry => {
                     break;
                 }
-                itertools::EitherOrBoth::Left(digit) => (digit, None),
-                itertools::EitherOrBoth::Both(digit, rhs) => (digit, Some(*rhs)),
+                E::Left(digit) => (digit, D::default()),
+                E::Both(digit, rhs) => (digit, *rhs),
             };
 
-            (*digit, carry) = digit.carring_sub(rhs.unwrap_or_default(), carry);
+            (*lhs_digit, carry) = lhs_digit.carring_sub(rhs_digit, carry);
         }
 
         lhs.truncate_leading_zeros();
