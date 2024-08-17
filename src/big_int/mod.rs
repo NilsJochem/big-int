@@ -125,8 +125,9 @@ impl TieBreaker for TieBigger {
 
 #[derive(Clone, Default)]
 pub struct BigInt<D> {
+    /// the sign of the number or zero <=> `digits.is_empty()`
     signum: SigNum,
-    /// holds the digits (in base 2^`HalfSize::BITS`) in LE order
+    /// holds the digits in LE order
     digits: Vec<D>,
 }
 impl<D: Digit> std::fmt::Debug for BigInt<D> {
