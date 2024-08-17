@@ -342,6 +342,30 @@ pub(super) mod big_math {
                 );
             }
         }
+        #[test]
+        fn radix() {
+            assert_eq!(
+                Radix::<u8>::try_from(2),
+                Ok(Radix::PowerOfTwo(NonZero::new(1).unwrap()))
+            );
+            assert_eq!(
+                Radix::<u8>::try_from(3),
+                Ok(Radix::Other(BigInt::from_digit(3)))
+            );
+            assert_eq!(
+                Radix::<u8>::try_from(4),
+                Ok(Radix::PowerOfTwo(NonZero::new(2).unwrap()))
+            );
+            assert_eq!(
+                Radix::<u8>::try_from(8),
+                Ok(Radix::PowerOfTwo(NonZero::new(3).unwrap()))
+            );
+            assert_eq!(Radix::<u8>::try_from(256), Ok(Radix::DigitBase));
+            assert_eq!(
+                Radix::<u32>::try_from(0x0001_0000_0000),
+                Ok(Radix::DigitBase)
+            );
+        }
         // TODO test non pow 2
     }
 

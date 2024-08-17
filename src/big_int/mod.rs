@@ -1,6 +1,8 @@
+use common::require;
 use itertools::{Either, Itertools};
 use std::fmt::{Debug, Write};
 use std::iter;
+use std::num::NonZero;
 use std::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
     Mul, MulAssign, Neg, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
@@ -139,7 +141,7 @@ impl<D: Digit> std::fmt::Debug for BigInt<D> {
             }
         )?;
         for (pos, elem) in self.digits.iter().rev().with_position() {
-            write!(f, "{elem:0size$x}", size = Self::BASIS_POW / 4)?;
+            write!(f, "{elem:0size$x}", size = D::BYTES * 2)?;
             if matches!(
                 pos,
                 itertools::Position::First | itertools::Position::Middle
@@ -256,6 +258,63 @@ impl<PRIMITIVE: primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
         }
     }
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Radix<D: Digit> {
+    DigitBase,
+    /// should not be `DigitBase`
+    PowerOfTwo(NonZero<usize>),
+    Other(BigInt<D>),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RadixError {
+    Zero,
+    One,
+    Negative,
+}
+impl<D: Digit> Radix<D> {
+    const fn from_pow_2(power: NonZero<usize>) -> Self {
+        if D::BYTES * 8 == power.get() {
+            Self::DigitBase
+        } else {
+            Self::PowerOfTwo(power)
+        }
+    }
+}
+impl<D: Digit> TryFrom<usize> for Radix<D> {
+    type Error = RadixError;
+
+    fn try_from(value: usize) -> Result<Self, RadixError> {
+        require!(value != 0, RadixError::Zero);
+        require!(value != 1, RadixError::One);
+        Ok(if value.is_power_of_two() {
+            Self::from_pow_2(
+                NonZero::new(value.ilog2() as usize).unwrap_or_else(|| {
+                    unreachable!("ilog2 doesn't return 0 unless the value is 0")
+                }),
+            )
+        } else {
+            Self::Other(value.into())
+        })
+    }
+}
+impl<D: Digit> TryFrom<BigInt<D>> for Radix<D> {
+    type Error = RadixError;
+
+    fn try_from(value: BigInt<D>) -> Result<Self, RadixError> {
+        require!(value.is_zero(), RadixError::Zero);
+        require!(value.is_negative(), RadixError::Negative);
+        require!(value.is_abs_one(), RadixError::One);
+        Ok(if value.is_power_of_two() {
+            Self::from_pow_2(
+                NonZero::new(value.ilog2()).unwrap_or_else(|| {
+                    unreachable!("ilog2 doesn't return 0 unless the value is 0")
+                }),
+            )
+        } else {
+            Self::Other(value)
+        })
+    }
+}
 
 impl<D: Digit> BigInt<D> {
     pub fn from_digit(value: D) -> Self {
@@ -281,7 +340,10 @@ impl<D: Digit> BigInt<D> {
     }
 
     pub const BASIS_POW: usize = (D::BYTES * 8);
-    pub const BASIS: usize = 1 << Self::BASIS_POW;
+    const NONZERO_ONE: NonZero<usize> = {
+        // SAFETY: 1 is non zero
+        unsafe { NonZero::new_unchecked(1) }
+    };
 
     fn truncate_leading_zeros(&mut self) {
         while self.digits.last().is_some_and(|&it| it.eq_u8(0)) {
@@ -319,25 +381,39 @@ impl<D: Digit> BigInt<D> {
         !self.is_negative() ^ !rhs.is_negative()
     }
 
-    pub fn digits(&self, radix: usize) -> usize {
-        if radix == Self::BASIS {
-            return self.digits.len();
-        }
-        if self.is_zero() {
-            return 0;
-        }
-        if radix == 2 {
-            return self.digits.last().map_or(0, |last| {
-                (self.digits(Self::BASIS) - 1) * Self::BASIS_POW + last.ilog2() as usize + 1
-            });
-        }
-        if radix.is_power_of_two() {
-            return self.digits(2).div_ceil(radix / 2);
-        }
-
-        unimplemented!("need div");
+    pub fn digits<T>(&self, radix: T) -> usize
+    where
+        T: TryInto<Radix<D>>,
+        T::Error: Debug,
+    {
+        self.try_digits(radix).unwrap()
     }
 
+    pub fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
+    where
+        T: TryInto<Radix<D>>,
+    {
+        if self.is_zero() {
+            return Ok(0);
+        }
+        match radix.try_into()? {
+            Radix::DigitBase => Ok(self.digits.len()),
+            Radix::PowerOfTwo(Self::NONZERO_ONE) => Ok(self.digits.last().map_or(0, |last| {
+                (self.try_digits(Radix::DigitBase).unwrap() - 1) * Self::BASIS_POW
+                    + last.ilog2() as usize
+                    + 1
+            })),
+            Radix::PowerOfTwo(power) => {
+                Ok(self.try_digits(2).unwrap().div_ceil(1 << (power.get() - 1)))
+            }
+            Radix::Other(_radix) => {
+                unimplemented!("need div");
+            }
+        }
+    }
+    pub fn ilog2(&self) -> usize {
+        self.try_digits(2).unwrap() - 1
+    }
     pub fn is_power_of_two(&self) -> bool {
         self.digits.last().map_or(false, Digit::is_power_of_two)
             && self.digits.iter().rev().skip(1).all(|&it| it.eq_u8(0))

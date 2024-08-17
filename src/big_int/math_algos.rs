@@ -207,7 +207,7 @@ pub mod div {
             }
             if i > 0 {
                 let (mut div_res, mod_res) = schoolbook_sub(lhs, rhs);
-                div_res += BigInt::from(BigInt::<D>::BASIS) * BigInt::from(i);
+                div_res += BigInt::from(i) << BigInt::<D>::BASIS_POW;
                 return (div_res, mod_res);
             }
         }
