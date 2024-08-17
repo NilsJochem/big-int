@@ -57,6 +57,49 @@ mod output {
             "Number { + 0x[00007766, 00005544, 33221100]}"
         );
     }
+    mod display {
+        use super::*;
+
+        #[test]
+        fn simple() {
+            assert_eq!(format!("{}", BigInt::<u8>::from(251)), "251");
+        }
+        #[test]
+        fn negative() {
+            assert_eq!(
+                format!("{}", BigInt::<u8>::from(-123_456_789i64)),
+                "-123456789"
+            );
+            assert_eq!(
+                format!("{:#}", BigInt::<u8>::from(-23_456_789i64)),
+                "-23_456_789"
+            );
+        }
+
+        #[test]
+        fn l_align() {
+            assert_eq!(
+                format!("{:<#10}", BigInt::<u8>::from(0)),
+                "0_000_000_000"
+            );
+            assert_eq!(
+                format!("{:<10}", BigInt::<u8>::from(12_345i64)),
+                "0000012345"
+            );
+            assert_eq!(
+                format!("{:<10}", BigInt::<u8>::from(-12_345i64)),
+                "-000012345"
+            );
+            assert_eq!(
+                format!("{:<#10}", BigInt::<u8>::from(12_345i64)),
+                "0_000_012_345"
+            );
+            assert_eq!(
+                format!("{:<#10}", BigInt::<u8>::from(-12_345i64)),
+                "-000_012_345"
+            );
+        }
+    }
     #[test]
     fn lower_hex() {
         assert_eq!(

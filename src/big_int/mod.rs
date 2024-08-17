@@ -152,11 +152,72 @@ impl<D: Digit> std::fmt::Debug for BigInt<D> {
         write!(f, "]}}")
     }
 }
-// impl std::fmt::Display for BigInt {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         todo!("need divided / modulo")
-//     }
-// }
+impl<D: Digit> std::fmt::Display for BigInt<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let radix = Self::from(10);
+        let mut number = self.clone();
+        let has_sign = number.is_negative() || f.sign_plus();
+        if number.is_negative() {
+            f.write_char('-')?;
+            number.signum = SigNum::Positive;
+        } else if f.sign_plus() {
+            f.write_char('+')?;
+        }
+        let mut buf = Vec::new();
+        while !number.is_zero() {
+            let (_, remainder) = Self::div_mod(&mut number, &radix);
+            debug_assert!(remainder.digits.len() <= 1);
+            buf.push(remainder.digits[0]);
+        }
+        if let Some(pad) = f.width() {
+            match f.align() {
+                Some(std::fmt::Alignment::Left) => {
+                    buf.extend(
+                        std::iter::repeat(D::default())
+                            .take(pad - has_sign as usize)
+                            .skip(buf.len()),
+                    );
+                }
+                Some(std::fmt::Alignment::Right) => {
+                    todo!("need option to have ' ' in buf")
+                    // buf = std::iter::repeat(' ')
+                    //     .take(pad - has_sign as usize)
+                    //     .skip(buf.len())
+                    //     .chain(buf)
+                    //     .collect();
+                }
+                Some(std::fmt::Alignment::Center) => todo!("not ready"),
+                None => {}
+            }
+        }
+        if f.alternate() {
+            for (pos, digits) in buf
+                .iter()
+                .chunks(3)
+                .into_iter()
+                .collect_vec()
+                .into_iter()
+                .rev()
+                .with_position()
+            {
+                for digit in digits.collect_vec().into_iter().rev() {
+                    write!(f, "{digit:?}")?;
+                }
+                match pos {
+                    itertools::Position::Middle | itertools::Position::First => {
+                        f.write_char('_')?;
+                    }
+                    itertools::Position::Last | itertools::Position::Only => {}
+                }
+            }
+        } else {
+            for digit in buf.iter().rev() {
+                write!(f, "{digit:?}")?;
+            }
+        }
+        Ok(())
+    }
+}
 impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buf = String::new();
