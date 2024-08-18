@@ -783,13 +783,7 @@ impl<D: Digit> BigInt<D> {
             return lhs.into();
         }
         if rhs.eq_u8(0) {
-            return match lhs {
-                Boo::BorrowedMut(lhs) => {
-                    *lhs = Self::default();
-                    Moo::BorrowedMut(lhs)
-                }
-                _ => Moo::Owned(Self::default()),
-            };
+            return Moo::from_with_value(lhs, Self::default());
         }
         let mut lhs = Moo::from(lhs);
         if rhs.eq_u8(1) {
