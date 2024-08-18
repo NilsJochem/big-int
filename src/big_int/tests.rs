@@ -1,6 +1,7 @@
 use super::*;
 mod create {
     use super::*;
+    use crate::{big_int::BigInt, rng::seeded_rng};
     #[test]
     fn cast_signum() {
         for i in i8::MIN..=i8::MAX {
@@ -44,6 +45,23 @@ mod create {
             }
         );
     }
+
+    #[test]
+    fn fuzz_new_random() {
+        const TRIES: usize = 100_000;
+
+        let (seed, mut rng) = seeded_rng();
+
+        for i in 0..TRIES {
+            let pick = BigInt::<u32>::new_random(2..=3, &mut rng);
+            assert!(pick.digits.len() == 1);
+            let pick = pick.digits[0];
+            assert!(
+                (0x00_0100..=0xff_ffff).contains(&pick),
+                "#{i} 0x0100 <= {pick:#x} <= 0xff_ffff; with seed {seed:?}"
+            );
+        }
+    }
 }
 mod output {
     use super::*;
@@ -78,10 +96,7 @@ mod output {
 
         #[test]
         fn l_align() {
-            assert_eq!(
-                format!("{:<#10}", BigInt::<u8>::from(0)),
-                "0_000_000_000"
-            );
+            assert_eq!(format!("{:<#10}", BigInt::<u8>::from(0)), "0_000_000_000");
             assert_eq!(
                 format!("{:<10}", BigInt::<u8>::from(12_345i64)),
                 "0000012345"

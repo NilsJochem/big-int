@@ -1,11 +1,13 @@
 use common::require;
 use itertools::{Either, Itertools};
+use rand::RngCore;
 use std::fmt::{Debug, Write};
 use std::iter;
 use std::num::NonZero;
 use std::ops::{
     Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
-    Mul, MulAssign, Neg, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
+    Mul, MulAssign, Neg, RangeInclusive, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub,
+    SubAssign,
 };
 
 use crate::boo::{Boo, Moo};
@@ -379,6 +381,29 @@ impl<D: Digit> TryFrom<BigInt<D>> for Radix<D> {
 }
 
 impl<D: Digit> BigInt<D> {
+    const NONZERO_ONE: NonZero<usize> = {
+        // SAFETY: 1 is non zero
+        unsafe { NonZero::new_unchecked(1) }
+    };
+
+    /// generate a new random number with at least `bytes.start()` and at most `bytes.end()` bytes of information
+    /// # Example
+    /// `0x00_0100` <= `BigInt::new_random(2..=3, _)` <= `0xff_ffff`,
+    pub fn new_random(bytes: RangeInclusive<usize>, mut rng: impl RngCore) -> Self {
+        let bytes =
+            bytes.start() + crate::rng::next_bound(*bytes.end() - *bytes.start(), &mut rng, 10);
+        let mut rnd_bytes = crate::rng::random_bytes(rng);
+        let last = rnd_bytes
+            .by_ref()
+            .take(5) // cap the number of tries
+            .find(|&it| it > 0)
+            .expect("only zeros found");
+        rnd_bytes
+            .take(bytes - 1)
+            .chain(std::iter::once(last))
+            .collect()
+    }
+
     pub fn from_digit(value: D) -> Self {
         if value.eq_u8(0) {
             Self {
@@ -400,11 +425,6 @@ impl<D: Digit> BigInt<D> {
         num.truncate_leading_zeros();
         num
     }
-
-    const NONZERO_ONE: NonZero<usize> = {
-        // SAFETY: 1 is non zero
-        unsafe { NonZero::new_unchecked(1) }
-    };
 
     fn truncate_leading_zeros(&mut self) {
         while self.digits.last().is_some_and(|&it| it.eq_u8(0)) {

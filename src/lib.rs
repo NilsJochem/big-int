@@ -12,6 +12,7 @@ mod boo;
 mod eliptic_curve;
 mod modular_arithmetic;
 mod modular_potentiation;
+mod rng;
 pub trait Algo {
     type Secret: Clone;
     type Intermediate;
@@ -129,10 +130,7 @@ where
 #[cfg(test)]
 mod tests {
     use eliptic_curve::{ElipticCurve, Generator, Point};
-    use rand::{
-        rngs::{OsRng, StdRng},
-        SeedableRng,
-    };
+    use rand::{rngs::StdRng, SeedableRng};
 
     use crate::diffie_hellman;
 
@@ -217,12 +215,6 @@ mod tests {
         assert_eq!(Point::new(13, 7, 17), key, "Alice calculated the wrong key");
     }
 
-    fn generate_array<const N: usize>(rng: &mut impl RngCore) -> Result<[u8; N], rand::Error> {
-        let mut buf = [0; N];
-        rng.try_fill_bytes(&mut buf)?;
-        Ok(buf)
-    }
-
     #[test]
     #[ignore = "not working"]
     fn diffie_hellman_fuzz() {
@@ -231,13 +223,12 @@ mod tests {
         let curve = ElipticCurve::new(2, 2, 17);
         let g = Generator::new(Point::new(5, 1, 17), &curve).unwrap();
 
-        let seed = generate_array(&mut OsRng).expect("failed to generate seed");
-        let mut rng = StdRng::from_seed(seed);
+        let (seed, mut rng) = rng::seeded_rng();
 
         for i in 0..N {
             let (key_bob, key_alice) = single_diffie_hellman(
-                StdRng::from_seed(generate_array(&mut rng).expect("failed to seed bob")),
-                StdRng::from_seed(generate_array(&mut rng).expect("failed to seed alice")),
+                StdRng::from_seed(rng::generate_array(&mut rng).expect("failed to seed bob")),
+                StdRng::from_seed(rng::generate_array(&mut rng).expect("failed to seed alice")),
                 &(curve, g),
             );
 
@@ -261,8 +252,8 @@ mod tests {
         let g = Generator::new(Point::new(5, 1, 17), &curve).unwrap();
 
         let (key_bob, key_alice) = single_diffie_hellman(
-            StdRng::from_seed(generate_array(&mut rng).expect("failed to seed bob")),
-            StdRng::from_seed(generate_array(&mut rng).expect("failed to seed alice")),
+            StdRng::from_seed(rng::generate_array(&mut rng).expect("failed to seed bob")),
+            StdRng::from_seed(rng::generate_array(&mut rng).expect("failed to seed alice")),
             &(curve, g),
         );
 
