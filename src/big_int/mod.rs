@@ -545,6 +545,11 @@ impl<D: Digit> BigInt<D> {
     pub fn abs(&mut self) {
         self.signum = self.signum.abs();
     }
+    pub fn take_sign(&mut self) -> SigNum {
+        let signum = self.signum;
+        self.abs();
+        signum
+    }
 
     fn assert_pair_valid(lhs: &Boo<'_, Self>, rhs: &Boo<'_, Self>) {
         assert!(
@@ -909,9 +914,7 @@ impl<D: Digit> BigInt<D> {
         let (mut n, lhs) = lhs.take_keep_ref();
         let (mut d, rhs) = rhs.take_keep_ref();
 
-        let signum = n.signum * d.signum;
-        n.abs();
-        d.abs();
+        let signum = n.take_sign() * d.take_sign();
 
         let (mut q, r) = math_algos::div::normalized_schoolbook(n, d);
         q.signum = signum;
