@@ -192,7 +192,7 @@ pub mod mul {
         ) -> Moo<'b, BigInt<D>> {
             let signum = rhs.signum;
             let mut either = super::get_lhs(lhs, rhs);
-            either.signum *= signum;
+            *either *= signum;
             either
         }
     }
@@ -209,7 +209,7 @@ pub mod mul {
             let signum = rhs.signum;
             let pow = rhs.digits(2) - 1;
             let mut either = super::get_lhs(lhs, rhs);
-            either.signum *= signum;
+            *either *= signum;
             *either <<= pow;
             either
         }
@@ -233,7 +233,7 @@ pub mod div {
         ) -> Self::RES<'b, D> {
             let signum = rhs.signum;
             let (mut r, lhs) = lhs.take_keep_ref();
-            r.signum *= signum;
+            r *= signum;
             (
                 Moo::from_with_value(lhs, BigInt::from(0)),
                 Moo::from_with_value(rhs, r),
@@ -275,7 +275,7 @@ pub mod div {
             let signum = rhs.signum;
             let pow = rhs.digits(2) - 1;
             let (mut q, r) = BigInt::shr_internal(lhs, pow);
-            q.signum *= signum;
+            *q *= signum;
             (q, Moo::from_with_value(rhs, r))
         }
     }

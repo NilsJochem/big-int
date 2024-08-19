@@ -701,7 +701,7 @@ impl<D: Digit> BigInt<D> {
         (lhs, overflow)
     }
 
-    fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -739,7 +739,7 @@ impl<D: Digit> BigInt<D> {
             math_algos::add::assign_same_sign,
         )
     }
-    fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -795,11 +795,11 @@ impl<D: Digit> BigInt<D> {
                 Moo::Owned(lhs)
             }
         };
-        either.signum *= signum;
+        *either *= signum;
         either
     }
 
-    fn mul_by_digit<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn mul_by_digit<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b, Self>>,
         B2: Into<Boo<'b, D>>,
@@ -823,7 +823,18 @@ impl<D: Digit> BigInt<D> {
         math_algos::mul::assign_mul_digit_at_offset(&mut lhs, rhs, 0);
         lhs
     }
-    fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+
+    pub(crate) fn mul_by_sign<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b, Self>>,
+        B2: Into<Boo<'b, SigNum>>,
+    {
+        let mut lhs = Moo::<Self>::from(lhs.into());
+        lhs.signum *= *rhs.into();
+        lhs
+    }
+
+    pub(crate) fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -850,7 +861,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -869,7 +880,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
     #[allow(dead_code)]
-    fn rem_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn rem_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -887,7 +898,7 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).1,
         }
     }
-    fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+    pub fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
     ) -> (Moo<'b, Self>, Moo<'b, Self>)
@@ -985,6 +996,8 @@ implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
 implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigInt<D>);
 implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
+
+implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_sign, SigNum);
 
 #[cfg(test)]
 mod tests;

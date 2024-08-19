@@ -270,7 +270,7 @@ pub mod gcd {
             old = new;
             new = next;
         }
-        old.s.signum *= sign_a;
+        old.s *= sign_a;
         new.s.signum = sign_b;
         (old, new)
     }
