@@ -168,7 +168,7 @@ impl<D: Digit> std::fmt::Display for BigInt<D> {
         }
         let mut buf = Vec::new();
         while !number.is_zero() {
-            let (_, remainder) = Self::div_mod(&mut number, &radix);
+            let (_, remainder) = Self::div_mod_euclid(&mut number, &radix);
             debug_assert!(remainder.digits.len() <= 1);
             buf.push(remainder.digits[0]);
         }
@@ -845,7 +845,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    fn div<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -857,14 +857,14 @@ impl<D: Digit> BigInt<D> {
         Self::assert_pair_valid(&lhs, &rhs);
         match (lhs, rhs) {
             (lhs, Boo::BorrowedMut(rhs)) => {
-                let (result, _) = Self::div_mod(lhs, std::mem::take(rhs));
+                let (result, _) = Self::div_mod_euclid(lhs, std::mem::take(rhs));
                 Moo::from_with_value(rhs, result.expect_owned("did'nt hat mut ref"))
             }
-            (lhs, rhs) => Self::div_mod(lhs, rhs).0,
+            (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).0,
         }
     }
     #[allow(dead_code)]
-    fn rem<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    fn rem_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -876,13 +876,16 @@ impl<D: Digit> BigInt<D> {
         Self::assert_pair_valid(&lhs, &rhs);
         match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
-                let (_, result) = Self::div_mod(std::mem::take(lhs), rhs);
+                let (_, result) = Self::div_mod_euclid(std::mem::take(lhs), rhs);
                 Moo::from_with_value(lhs, result.expect_owned("did'nt hat mut ref"))
             }
-            (lhs, rhs) => Self::div_mod(lhs, rhs).1,
+            (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).1,
         }
     }
-    fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> (Moo<'b, Self>, Moo<'b, Self>)
+    fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+        lhs: B1,
+        rhs: B2,
+    ) -> (Moo<'b, Self>, Moo<'b, Self>)
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -906,21 +909,12 @@ impl<D: Digit> BigInt<D> {
         let (mut n, lhs) = lhs.take_keep_ref();
         let (mut d, rhs) = rhs.take_keep_ref();
 
-        let was_negative = (n.signum * d.signum).is_negative().then(|| d.abs_clone());
+        let signum = n.signum * d.signum;
         n.abs();
         d.abs();
 
-        let (mut q, mut r) = math_algos::div::normalized_schoolbook(n, d);
-
-        if let Some(d) = was_negative {
-            // q = -(q+1)
-            q += Self::from(1);
-            q.negate();
-
-            //r = d-r;
-            r -= d;
-            r.negate();
-        }
+        let (mut q, r) = math_algos::div::normalized_schoolbook(n, d);
+        q.signum = signum;
 
         (Moo::from_with_value(lhs, q), Moo::from_with_value(rhs, r))
     }
@@ -986,8 +980,8 @@ implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
 implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
-implBigMath!(DivAssign, div_assign, Div, div);
-implBigMath!(RemAssign, rem_assign, Rem, rem);
+implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigInt<D>);
+implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
 
 #[cfg(test)]
 mod tests;

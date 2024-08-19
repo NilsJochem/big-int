@@ -137,6 +137,10 @@ pub mod div {
         mut lhs: BigInt<D>,
         mut rhs: BigInt<D>,
     ) -> (BigInt<D>, BigInt<D>) {
+        debug_assert!(
+            !lhs.is_negative() && !rhs.is_negative(),
+            "only positive allowed"
+        );
         let shift =
             D::BASIS_POW - (rhs.digits.last().expect("can't divide by 0").ilog2() as usize + 1);
         lhs <<= shift;
@@ -171,7 +175,7 @@ pub mod div {
         let (lhs_prime, s) = BigInt::shr_internal(lhs, power);
         let (q_prime, r_prime) = schoolbook_sub(expect_owned(lhs_prime, "shr_internal"), &rhs);
         debug_assert!(s.digits.len() < (m - n));
-        let (q, r) = BigInt::div_mod((r_prime << power) + s, rhs);
+        let (q, r) = BigInt::div_mod_euclid((r_prime << power) + s, rhs);
         debug_assert!(q.digits.len() < (m - n));
         (
             (q_prime << power) + expect_owned(q, "div_mod"),
@@ -233,6 +237,131 @@ pub mod div {
             t -= rhs;
         }
         (BigInt::from_digit(q), lhs - t)
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Gcd<D: Digit>(pub BigInt<D>);
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct BezoutCoefficients<D: Digit>(pub BigInt<D>, pub BigInt<D>);
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct BezoutBuilder<D: Digit>(Option<(BigInt<D>, BigInt<D>)>);
+    impl<D: Digit> BezoutBuilder<D> {
+        fn new(a: &BigInt<D>, b: &BigInt<D>) -> Self {
+            if b.is_zero() {
+                Self(None)
+            } else {
+                Self(Some((a.clone(), b.clone())))
+            }
+        }
+        #[allow(dead_code)]
+        fn calculate_new_t(self, new_s: &BigInt<D>) -> BigInt<D> {
+            if let Some((a, b)) = self.0 {
+                (new_s * a) / b
+            } else {
+                BigInt::from(0)
+            }
+        }
+        fn calculate_old_t(self, old: &GCDHelper<D>) -> BigInt<D> {
+            if let Some((a, b)) = self.0 {
+                (&old.r - &old.s * a) / b
+            } else {
+                BigInt::from(0)
+            }
+        }
+    }
+    struct GCDHelper<D: Digit> {
+        r: BigInt<D>,
+        s: BigInt<D>,
+    }
+    #[allow(dead_code)]
+    pub fn extendet_euclid<D: Digit>(
+        a: BigInt<D>,
+        b: BigInt<D>,
+    ) -> (BezoutCoefficients<D>, Gcd<D>) {
+        let bezout_builder = BezoutBuilder::new(&a, &b);
+
+        let (old, _) = inner_euclid(a, b);
+        let bezout_t = bezout_builder.calculate_old_t(&old);
+        (BezoutCoefficients(old.s, bezout_t), Gcd(old.r))
+    }
+
+    fn inner_euclid<D: Digit>(mut a: BigInt<D>, mut b: BigInt<D>) -> (GCDHelper<D>, GCDHelper<D>) {
+        assert!(!a.is_zero() && !b.is_zero(), "can't find gcc with zero");
+        let sign_a = a.signum;
+        let sign_b = b.signum;
+        a.abs();
+        b.abs();
+
+        let mut old = GCDHelper {
+            r: a,
+            s: BigInt::from(1),
+        };
+        let mut this = GCDHelper {
+            r: b,
+            s: BigInt::from(0),
+        };
+
+        while !this.r.is_zero() {
+            let (qoutient, remainder) = BigInt::div_mod_euclid(old.r, &this.r);
+
+            let next = GCDHelper {
+                r: remainder.cloned(),
+                s: old.s - &*qoutient * &this.s,
+            };
+
+            old = this;
+            this = next;
+        }
+        old.s.signum *= sign_a;
+        this.s.signum = sign_b;
+        (old, this)
+    }
+
+    #[cfg(test)]
+    pub(super) mod test_helper {
+        use super::*;
+
+        #[cfg(test)]
+        pub fn test_gcd<D: Digit>(
+            a: impl Into<BigInt<D>>,
+            b: impl Into<BigInt<D>>,
+            gcd: impl Into<BigInt<D>>,
+            old_s: impl Into<BigInt<D>>,
+        ) {
+            let b = b.into();
+            let gcd = gcd.into();
+
+            let (old, new) = div::inner_euclid(a.into(), b.clone());
+
+            assert_eq!(old.r, gcd, "gcc correct");
+            assert_eq!(new.r, BigInt::from(0), "last remainder is zero");
+
+            assert_eq!(old.s, old_s.into(), "old s");
+            assert_eq!(new.s, &b / &gcd, "last s * gcc = b");
+        }
+        #[cfg(test)]
+        pub fn test_bezout<D: Digit>(
+            a: impl Into<BigInt<D>>,
+            b: impl Into<BigInt<D>>,
+            gcd: impl Into<BigInt<D>>,
+            old_s: impl Into<BigInt<D>>,
+            old_t: impl Into<BigInt<D>>,
+        ) {
+            let a = a.into();
+            let b = b.into();
+            let gcd = gcd.into();
+
+            let bezout = BezoutBuilder::new(&a, &b);
+            assert_eq!(
+                bezout.clone().calculate_old_t(&GCDHelper {
+                    r: gcd.clone(),
+                    s: old_s.into()
+                }),
+                old_t.into(),
+                "old t"
+            );
+            assert_eq!(bezout.calculate_new_t(&(b / &gcd)), a / gcd, "new t");
+        }
     }
 }
 
@@ -372,6 +501,50 @@ mod tests {
                         BigInt::from(0x7766_5544_3322_1100u64)
                     )
                 );
+            }
+        }
+
+        mod gcd {
+            use super::super::super::div::test_helper::{test_bezout, test_gcd};
+            #[test]
+            fn t_inner_gcd_both_positive() {
+                test_gcd::<u32>(240, 46, 2, -9);
+                test_gcd::<u32>(46, 240, 2, 47);
+            }
+            #[test]
+            fn t_inner_gcd_rhs_negative() {
+                test_gcd::<u32>(240, -46, 2, -9);
+                test_gcd::<u32>(46, -240, 2, 47);
+            }
+            #[test]
+            fn t_inner_gcd_lhs_negative() {
+                test_gcd::<u32>(-240, 46, 2, 9);
+                test_gcd::<u32>(-46, 240, 2, -47);
+            }
+            #[test]
+            fn t_inner_gcd_both_negative() {
+                test_gcd::<u32>(-240, -46, 2, 9);
+                test_gcd::<u32>(-46, -240, 2, -47);
+            }
+            #[test]
+            fn t_bezout_both_positive() {
+                test_bezout::<u32>(240, 46, 2, -9, 47);
+                test_bezout::<u32>(46, 240, 2, 47, -9);
+            }
+            #[test]
+            fn t_bezout_lhs_negative() {
+                test_bezout::<u32>(-240, 46, 2, 9, 47);
+                test_bezout::<u32>(-46, 240, 2, -47, -9);
+            }
+            #[test]
+            fn t_bezout_rhs_negative() {
+                test_bezout::<u32>(240, -46, 2, -9, -47);
+                test_bezout::<u32>(46, -240, 2, 47, 9);
+            }
+            #[test]
+            fn t_bezout_both_negative() {
+                test_bezout::<u32>(-240, -46, 2, 9, -47);
+                test_bezout::<u32>(-46, -240, 2, -47, 9);
             }
         }
     }

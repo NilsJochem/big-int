@@ -137,7 +137,7 @@ pub mod sub {
             lhs: Boo<'b, BigInt<D>>,
             rhs: Boo<'b, BigInt<D>>,
         ) -> Moo<'b, BigInt<D>> {
-            let mut either = super::get_lhs(lhs, rhs);
+            let mut either = super::get_lhs(rhs, lhs);
             either.negate();
             either
         }
@@ -401,7 +401,7 @@ mod tests {
 
         #[test]
         fn use_shortcut_lhs_zero() {
-            test_shorcut::<sub::Zero, Left, u32>(NON_ZERO, 0, -NON_ZERO, OP_DBG);
+            test_shorcut::<sub::Zero, Left, u32>(0, NON_ZERO, -NON_ZERO, OP_DBG);
         }
         #[test]
         fn use_shortcut_rhs_zero() {

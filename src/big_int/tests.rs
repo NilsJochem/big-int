@@ -378,6 +378,13 @@ pub(super) mod big_math {
                 BigInt::<u32>::from(0x55_4433_2211u64)
             )
         );
+        assert_eq!(
+            BigInt::<u8>::shr_internal(BigInt::from(0b0000_0110), 2),
+            (
+                Moo::from(BigInt::from(0b0000_0001)),
+                BigInt::from(0b0000_0010)
+            )
+        );
     }
     #[test]
     fn shr_overflow_no_partial() {
@@ -586,13 +593,50 @@ pub(super) mod big_math {
     #[test]
     fn div_same() {
         assert_eq!(
-            BigInt::<u8>::div_mod(BigInt::from_digit(10), BigInt::from_digit(10)),
+            BigInt::<u8>::div_mod_euclid(BigInt::from_digit(10), BigInt::from_digit(10)),
             (
                 Moo::Owned(BigInt::from_digit(1)),
                 Moo::Owned(BigInt::from_digit(0))
             )
         );
     }
+
+    #[test]
+    fn div_sign() {
+        assert_eq!(
+            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(6), BigInt::from_digit(4)),
+            (
+                Moo::Owned(BigInt::from_digit(1)),
+                Moo::Owned(BigInt::from_digit(2))
+            ),
+            "no negative"
+        );
+        assert_eq!(
+            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(6), BigInt::from(-4)),
+            (
+                Moo::Owned(BigInt::from(-1)),
+                Moo::Owned(BigInt::from_digit(2))
+            ),
+            "rhs negative"
+        );
+        assert_eq!(
+            BigInt::div_mod_euclid(BigInt::<u32>::from(-6), BigInt::from(4)),
+            (
+                Moo::Owned(BigInt::from(-1)),
+                Moo::Owned(BigInt::from_digit(2))
+            ),
+            "lhs negative"
+        );
+        assert_eq!(
+            BigInt::div_mod_euclid(BigInt::<u32>::from(-6), BigInt::from(-4)),
+            (
+                Moo::Owned(BigInt::from(1)),
+                Moo::Owned(BigInt::from_digit(2))
+            ),
+            "both negative"
+        );
+    }
+
     #[test]
     fn log_2() {
         assert!(BigInt::<u32>::from(1).is_power_of_two());

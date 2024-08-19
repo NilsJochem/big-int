@@ -29,6 +29,8 @@ impl Number {
     }
 
     pub fn mul_inverse(&self) -> Option<Self> {
+        // ((_, t), r) = extendet_euclid(value, mod)
+
         let mut t = 0;
         let mut new_t = 1;
         let mut r = self.modulus() as i64;
@@ -45,11 +47,13 @@ impl Number {
             r = tmp;
         }
 
-        match () {
-            () if r > 1 => None, //Number is not invertible
-            () if r < 0 => Some(Self::from_i64(t + self.modulus() as i64, self.modulus())),
-            () => Some(Self::from_i64(t, self.modulus())),
+        if r > 1 {
+            return None; //Number is not invertible
         }
+        if t < 0 {
+            t += self.modulus() as i64;
+        }
+        Some(Self::from_i64(t, self.modulus()))
     }
     fn div_unchecked(self, rhs: Self) -> Self {
         self.mul(rhs.mul_inverse().expect("no inverse of number").value())
