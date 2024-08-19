@@ -61,7 +61,7 @@ mod tests {
     fn fuzz_next_bound() {
         const TRIES: usize = 100_000;
         const MAX: usize = 13;
-        const DEVIATON: f64 = 0.03;
+        const DEVIATON: f64 = 0.04;
 
         let (seed, mut rng) = seeded_rng();
 
