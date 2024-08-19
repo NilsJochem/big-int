@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::{
     fmt::{Debug, LowerHex, UpperHex},
-    ops::{Add, BitAndAssign, BitOrAssign, BitXor, BitXorAssign, Div, Mul, Shl, Shr},
+    ops::{Add, BitAndAssign, BitOrAssign, BitXor, BitXorAssign, Div, Mul, Shl, Shr, ShrAssign},
 };
 
 use super::SigNum;
@@ -22,7 +22,8 @@ where
     for<'r> Self: BitOrAssign<&'r Self>
         + BitAndAssign<&'r Self>
         + BitXorAssign<&'r Self>
-        + BitXor<&'r Self, Output = Self>,
+        + BitXor<&'r Self, Output = Self>
+        + ShrAssign<usize>,
 {
     const BYTES: usize;
     const BASIS_POW: usize = (Self::BYTES * 8);
@@ -295,6 +296,11 @@ impl BitXor<&Self> for HalfSize {
 
     fn bitxor(self, rhs: &Self) -> Self::Output {
         Self(self.0 ^ rhs.0)
+    }
+}
+impl ShrAssign<usize> for HalfSize {
+    fn shr_assign(&mut self, rhs: usize) {
+        self.0 >>= rhs;
     }
 }
 

@@ -687,6 +687,9 @@ impl<D: Digit> BigInt<D> {
             }
             lhs.digits = iter.collect();
         } else {
+            if partial > 0 {
+                carry >>= D::BASIS_POW - partial;
+            }
             overflow = Self::from_digit(carry);
         }
         lhs.truncate_leading_zeros();
