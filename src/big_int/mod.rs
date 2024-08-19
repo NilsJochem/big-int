@@ -13,8 +13,8 @@ use std::ops::{
 use crate::boo::{Boo, Moo};
 use math_shortcuts::MathShortcut;
 
-mod digits;
-mod math_algos;
+pub mod digits;
+pub mod math_algos;
 mod math_shortcuts;
 mod primitve;
 use digits::{Decomposable, Digit, Wide};

@@ -9,6 +9,7 @@ use rand::{CryptoRng, RngCore};
 
 pub mod big_int;
 mod boo;
+pub mod decimal;
 mod eliptic_curve;
 mod modular_arithmetic;
 mod modular_potentiation;
