@@ -830,7 +830,12 @@ impl<D: Digit> BigInt<D> {
         B2: Into<Boo<'b, SigNum>>,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
-        lhs.signum *= *rhs.into();
+        let rhs = rhs.into().copied();
+        if rhs == SigNum::Zero {
+            *lhs = Self::from(0);
+        } else {
+            lhs.signum *= rhs;
+        }
         lhs
     }
 
