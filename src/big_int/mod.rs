@@ -1,3 +1,4 @@
+use common::extensions::iter::IteratorExt;
 use common::require;
 use itertools::{Either, Itertools};
 use rand::RngCore;
@@ -17,7 +18,7 @@ pub mod digits;
 pub mod math_algos;
 mod math_shortcuts;
 mod primitve;
-use digits::{Decomposable, Digit, Wide};
+use digits::{Convert, Decomposable, Digit, Wide};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(i8)]
@@ -266,15 +267,21 @@ impl<D: Digit> Decomposable<D> for BigInt<D> {
         self.signum
     }
 
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator {
-        self.digits.into_iter()
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_ {
+        self.digits.iter().copied()
+    }
+}
+impl<D: Digit> Decomposable<bool> for BigInt<D> {
+    fn signum(&self) -> SigNum {
+        self.signum
     }
 
-    fn as_le_bytes<'s, 'd: 's>(&'s self) -> impl ExactSizeIterator<Item = &D> + DoubleEndedIterator
-    where
-        D: 'd,
-    {
-        self.digits.iter()
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+        self.digits
+            .iter()
+            .flat_map(|it| it.iter_le_bits(true))
+            .with_size(self.digits.len() * D::BASIS_POW)
+            .take(self.digits(2))
     }
 }
 
@@ -287,12 +294,12 @@ impl<D: Digit, M: Decomposable<D>> PartialEq<M> for BigInt<D> {
 impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigInt<D> {
     fn partial_cmp(&self, other: &M) -> Option<std::cmp::Ordering> {
         Some(self.signum.cmp(&other.signum()).then_with(|| {
-            let digits = other.as_le_bytes();
+            let digits = other.le_digits();
 
             for elem in self.digits.iter().zip_longest(digits).rev() {
                 match elem {
                     itertools::EitherOrBoth::Both(lhs, rhs) => {
-                        let ord = lhs.cmp(rhs);
+                        let ord = lhs.cmp(&rhs);
                         if ord.is_ne() {
                             return ord;
                         }
@@ -326,6 +333,14 @@ impl<PRIMITIVE: primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
                 num
             }
         }
+    }
+}
+impl<D: Digit> Convert<usize> for BigInt<D> {
+    fn try_into(&self) -> Option<usize> {
+        if self.signum().is_negative() || self.signum().is_negative() {
+            return None;
+        }
+        Some(D::try_combine(self.digits.iter().copied()).unwrap())
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -469,6 +484,9 @@ impl<D: Digit> BigInt<D> {
     }
     const fn is_different_sign(&self, rhs: &Self) -> bool {
         !self.is_negative() ^ !rhs.is_negative()
+    }
+    pub fn is_even(&self) -> bool {
+        self.digits.last().map_or(true, D::is_even)
     }
 
     pub fn digits<T>(&self, radix: T) -> usize
@@ -874,27 +892,47 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Moo::Owned(math_algos::mul::naive(&lhs, &rhs)),
         }
     }
-    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        P: Decomposable<bool> + 'b2 + Clone,
+        B2: Into<Boo<'b2, P>>,
         D: 'b1 + 'b2,
     {
-        let pow = pow.into();
+        let pow: Boo<P> = pow.into();
         assert!(
             !matches!(pow, Boo::BorrowedMut(_)),
             "will not assign to power"
         );
-        assert!(!pow.is_negative(), "can't pow ints by negatives");
-        let mut pow = pow.cloned();
-        let mut lhs: Moo<Self> = Moo::from(lhs.into());
-        let orig = std::mem::replace(lhs.get_mut(), Self::from(1));
-        let one = Self::from(1);
-        while !pow.is_zero() {
-            pow -= &one;
-            *lhs *= &orig;
+        assert!(!pow.signum().is_negative(), "can't pow ints by negatives");
+
+        let lhs: Boo<_> = lhs.into();
+
+        if pow.signum().is_zero() {
+            return Moo::from_with_value(lhs, Self::from(1));
         }
-        lhs
+        if lhs.is_zero() {
+            return lhs.into();
+        }
+        if lhs.is_power_of_two() {
+            let l_pow = lhs.digits(2) - 1;
+            if let Some(pow) =
+                <P as Convert<usize>>::try_into(&pow).and_then(|it| it.checked_mul(l_pow))
+            {
+                return Self::shl(Self::from(1), pow);
+            }
+        }
+
+        let mut out: Moo<Self> = Moo::from(lhs);
+        let mut x = std::mem::replace(&mut *out, Self::from(1));
+
+        for bit in pow.le_digits() {
+            if bit {
+                *out.get_mut() *= &x;
+            }
+            x = &x * &x;
+        }
+        out
     }
 
     pub(crate) fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>

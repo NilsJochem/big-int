@@ -1,23 +1,37 @@
 use itertools::Itertools;
 use std::{
+    convert::Infallible,
     fmt::{Debug, LowerHex, UpperHex},
     ops::{Add, BitAndAssign, BitOrAssign, BitXor, BitXorAssign, Div, Mul, Shl, Shr, ShrAssign},
 };
 
 use super::SigNum;
 
-pub trait Decomposable<D> {
+pub trait Decomposable<D>: Convert<usize> {
     fn signum(&self) -> SigNum;
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator;
-    fn as_le_bytes<'s, 'd: 's>(&'s self) -> impl ExactSizeIterator<Item = &D> + DoubleEndedIterator
-    where
-        D: 'd;
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_;
 }
-
+pub trait Convert<D> {
+    fn try_into(&self) -> Option<D>;
+}
+pub trait CombineTo<B> {
+    fn try_combine(a: impl Iterator<Item = Self>) -> Option<B>;
+}
 /// A 'Digit' for a Bigint
 /// is assumed to be exactly stored as a number of bytes (its basis is 2^8n for some Interger n)
 pub trait Digit:
-    Copy + Default + Debug + Eq + Ord + Decomposable<Self> + LowerHex + UpperHex + From<u8> + From<bool>
+    Copy
+    + Default
+    + Debug
+    + Eq
+    + Ord
+    + Decomposable<Self>
+    + Decomposable<u8>
+    + CombineTo<usize>
+    + LowerHex
+    + UpperHex
+    + From<u8>
+    + From<bool>
 where
     for<'r> Self: BitOrAssign<&'r Self>
         + BitAndAssign<&'r Self>
@@ -33,6 +47,19 @@ where
     fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self>;
     fn ilog2(&self) -> u32;
     fn is_power_of_two(&self) -> bool;
+    fn is_even(&self) -> bool;
+    fn get_bit(&self, i: usize) -> bool;
+    fn iter_le_bits(
+        &self,
+        all: bool,
+    ) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+        (0..if all {
+            Self::BASIS_POW
+        } else {
+            Self::ilog2(self) as usize + 1
+        })
+            .map(|i| self.get_bit(i))
+    }
 
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering;
     fn eq_u8(&self, other: u8) -> bool {
@@ -127,9 +154,6 @@ impl<H: Copy, W: Copy + Wide<H>> WideConvert<H, W> {
     const fn from_wide(wide: W) -> Self {
         Self { wide }
     }
-    const fn from_wide_ref(wide: &W) -> &Self {
-        unsafe { &*((std::ptr::from_ref(wide)).cast()) }
-    }
     fn from_wide_mut(wide: &mut W) -> &mut Self {
         unsafe { &mut *((std::ptr::from_mut(wide)).cast()) }
     }
@@ -157,19 +181,27 @@ impl<H: Copy, W: Copy + Wide<H>> std::ops::DerefMut for WideConvert<H, W> {
 
 macro_rules! implDigit {
     ($digit:ident, $wide: ident) => {
+        impl Convert<usize> for $digit {
+            fn try_into(&self) -> Option<usize> {
+                usize::try_from(*self).ok()
+            }
+        }
         impl Decomposable<Self> for $digit {
             fn signum(&self) -> SigNum {
                 SigNum::from_uint(*self == 0)
             }
 
-            fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator {
-                std::iter::once(self)
+            fn le_digits(&self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + '_ {
+                std::iter::once(*self)
+            }
+        }
+        impl Decomposable<bool> for $digit {
+            fn signum(&self) -> SigNum {
+                <Self as Decomposable<Self>>::signum(&self)
             }
 
-            fn as_le_bytes<'s, 'd: 's>(
-                &'s self,
-            ) -> impl ExactSizeIterator<Item = &Self> + DoubleEndedIterator {
-                std::iter::once(self)
+            fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+                self.iter_le_bits(false)
             }
         }
         impl Digit for $digit {
@@ -197,6 +229,12 @@ macro_rules! implDigit {
             fn is_power_of_two(&self) -> bool {
                 (*self).is_power_of_two()
             }
+            fn is_even(&self) -> bool {
+                self % 2 == 0
+            }
+            fn get_bit(&self, i: usize) -> bool {
+                (self & 1 << i) != 0
+            }
 
             fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
                 u8::try_from(*self).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
@@ -215,18 +253,10 @@ macro_rules! implDigit {
                 SigNum::from_uint(*self == 0)
             }
 
-            fn into_le_bytes(self) -> impl ExactSizeIterator<Item = $digit> + DoubleEndedIterator {
+            fn le_digits(
+                &self,
+            ) -> impl ExactSizeIterator<Item = $digit> + DoubleEndedIterator + '_ {
                 <[_; 2]>::from(self.split_le()).into_iter()
-            }
-
-            fn as_le_bytes<'s, 'd: 's>(
-                &'s self,
-            ) -> impl ExactSizeIterator<Item = &$digit> + DoubleEndedIterator
-            where
-                HalfSize: 'd,
-            {
-                let halfs = &*WideConvert::from_wide_ref(self);
-                [&halfs.lower, &halfs.upper].into_iter()
             }
         }
         impl Wide<$digit> for $wide {
@@ -256,6 +286,82 @@ implDigit!(u8, u16);
 implDigit!(u16, u32);
 implDigit!(u32, u64);
 implDigit!(u64, u128);
+
+impl Convert<usize> for u128 {
+    fn try_into(&self) -> Option<usize> {
+        usize::try_from(*self).ok()
+    }
+}
+impl Decomposable<u8> for u32 {
+    fn signum(&self) -> SigNum {
+        <Self as Decomposable<Self>>::signum(self)
+    }
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = u8> + DoubleEndedIterator + '_ {
+        self.to_le_bytes().into_iter()
+    }
+}
+impl Decomposable<u8> for u64 {
+    fn signum(&self) -> SigNum {
+        <Self as Decomposable<Self>>::signum(self)
+    }
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = u8> + DoubleEndedIterator + '_ {
+        self.to_le_bytes().into_iter()
+    }
+}
+impl CombineTo<usize> for u8 {
+    fn try_combine(iter: impl Iterator<Item = Self>) -> Option<usize> {
+        let bytes: [Self; usize::BITS as usize / 8] = iter.collect::<Vec<_>>().try_into().ok()?;
+        Some(usize::from_le_bytes(bytes))
+    }
+}
+impl CombineTo<usize> for u16 {
+    fn try_combine(iter: impl Iterator<Item = Self>) -> Option<usize> {
+        if cfg!(target_pointer_width = "16") {
+            iter.exactly_one().ok().map(|it| it as usize)
+        } else {
+            u8::try_combine(iter.flat_map(Self::to_le_bytes))
+        }
+    }
+}
+impl CombineTo<usize> for u32 {
+    fn try_combine(iter: impl Iterator<Item = Self>) -> Option<usize> {
+        if cfg!(target_pointer_width = "32") {
+            iter.exactly_one().ok().map(|it| it as usize)
+        } else {
+            u8::try_combine(iter.flat_map(Self::to_le_bytes))
+        }
+    }
+}
+impl CombineTo<usize> for u64 {
+    fn try_combine(iter: impl Iterator<Item = Self>) -> Option<usize> {
+        if cfg!(target_pointer_width = "64") {
+            iter.exactly_one().ok().map(|it| it as usize)
+        } else {
+            u8::try_combine(iter.flat_map(Self::to_le_bytes))
+        }
+    }
+}
+
+impl Convert<usize> for i32 {
+    fn try_into(&self) -> Option<usize> {
+        usize::try_from(*self).ok()
+    }
+}
+impl Decomposable<bool> for i32 {
+    fn signum(&self) -> SigNum {
+        match self.cmp(&0) {
+            std::cmp::Ordering::Less => SigNum::Negative,
+            std::cmp::Ordering::Equal => SigNum::Zero,
+            std::cmp::Ordering::Greater => SigNum::Positive,
+        }
+    }
+
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+        <u32 as Decomposable<bool>>::le_digits(&self.unsigned_abs())
+            .collect_vec()
+            .into_iter()
+    }
+}
 
 #[cfg(target_pointer_width = "64")]
 type HalfSizeNative = u32;
@@ -314,6 +420,18 @@ impl From<bool> for HalfSize {
         Self(value as HalfSizeNative)
     }
 }
+impl TryFrom<HalfSize> for usize {
+    type Error = Infallible;
+
+    fn try_from(value: HalfSize) -> Result<Self, Self::Error> {
+        Ok(value.0 as Self)
+    }
+}
+impl Convert<usize> for HalfSize {
+    fn try_into(&self) -> Option<usize> {
+        Some(self.0 as usize)
+    }
+}
 
 impl PartialOrd<u8> for HalfSize {
     fn partial_cmp(&self, other: &u8) -> Option<std::cmp::Ordering> {
@@ -330,13 +448,31 @@ impl Decomposable<Self> for HalfSize {
     fn signum(&self) -> SigNum {
         SigNum::from_uint(self.0 == 0)
     }
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator {
-        std::iter::once(self)
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + '_ {
+        std::iter::once(*self)
     }
-    fn as_le_bytes<'s, 'd: 's>(
-        &'s self,
-    ) -> impl ExactSizeIterator<Item = &Self> + DoubleEndedIterator {
-        std::iter::once(self)
+}
+impl Decomposable<u8> for HalfSize {
+    fn signum(&self) -> SigNum {
+        <Self as Decomposable<Self>>::signum(self)
+    }
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = u8> + DoubleEndedIterator + '_ {
+        self.0.to_le_bytes().into_iter()
+    }
+}
+impl Decomposable<bool> for HalfSize {
+    fn signum(&self) -> SigNum {
+        <HalfSizeNative as Decomposable<bool>>::signum(&self.0)
+    }
+
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+        <HalfSizeNative as Decomposable<bool>>::le_digits(&self.0)
+    }
+}
+impl CombineTo<usize> for HalfSize {
+    fn try_combine(a: impl Iterator<Item = Self>) -> Option<usize> {
+        let (low, high) = a.collect_tuple()?;
+        Some(usize::new(low, high))
     }
 }
 impl Digit for HalfSize {
@@ -362,6 +498,13 @@ impl Digit for HalfSize {
     fn is_power_of_two(&self) -> bool {
         self.0.is_power_of_two()
     }
+    fn is_even(&self) -> bool {
+        self.0 % 2 == 0
+    }
+    fn get_bit(&self, i: usize) -> bool {
+        (self.0 & 1 << i) != 0
+    }
+
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
         u8::try_from(self.0).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
     }
@@ -374,21 +517,19 @@ impl Digit for HalfSize {
         (Self(result), carry)
     }
 }
+
+impl Convert<Self> for usize {
+    fn try_into(&self) -> Option<Self> {
+        Some(*self)
+    }
+}
 impl Decomposable<HalfSize> for usize {
     fn signum(&self) -> SigNum {
         SigNum::from_uint(*self == 0)
     }
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = HalfSize> + DoubleEndedIterator {
+
+    fn le_digits(&self) -> impl ExactSizeIterator<Item = HalfSize> + DoubleEndedIterator + '_ {
         <[_; 2]>::from(self.split_le()).into_iter()
-    }
-    fn as_le_bytes<'s, 'd: 's>(
-        &'s self,
-    ) -> impl ExactSizeIterator<Item = &HalfSize> + DoubleEndedIterator
-    where
-        HalfSize: 'd,
-    {
-        let halfs = WideConvert::from_wide_ref(self);
-        [&halfs.lower, &halfs.upper].into_iter()
     }
 }
 impl Wide<HalfSize> for usize {

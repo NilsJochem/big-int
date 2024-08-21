@@ -28,7 +28,7 @@ mod create {
     #[test]
     fn from_u32s() {
         assert_eq!(
-            BigInt::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]),
+            BigInt::<u32>::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]),
             BigInt {
                 signum: SigNum::Positive,
                 digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
@@ -38,7 +38,7 @@ mod create {
     #[test]
     fn from_i128() {
         assert_eq!(
-            BigInt::from(-0x9988_7766_5544_3322_1100i128),
+            BigInt::<u32>::from(-0x9988_7766_5544_3322_1100i128),
             BigInt {
                 signum: SigNum::Negative,
                 digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
@@ -236,6 +236,27 @@ mod order {
         assert_eq!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)), Ordering::Less);
         assert!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)).is_le());
     }
+}
+
+#[test]
+fn bits() {
+    let mut num = BigInt::<u16>::from(0x0123_4567);
+    assert_eq!(
+        <BigInt::<_> as Decomposable<bool>>::le_digits(&num).collect_vec(),
+        std::iter::from_fn(move || {
+            if num.is_zero() {
+                None
+            } else {
+                let (_, r) = BigInt::shr_internal(&mut num, 1);
+                Some(!r.is_zero())
+            }
+        })
+        .collect_vec()
+    );
+    assert_eq!(
+        <BigInt<_> as Decomposable<bool>>::le_digits(&BigInt::<u32>::from(0)).next(),
+        None
+    );
 }
 pub(super) mod big_math {
 
@@ -677,6 +698,45 @@ pub(super) mod big_math {
         assert_eq!(
             BigInt::<u32>::from(0x8000_0000_0000_0000u64).digits(2) - 1,
             63
+        );
+    }
+    #[test]
+    fn pow() {
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(3), 21).cloned(),
+            BigInt::from_digit(3u64.pow(21))
+        );
+    }
+    #[test]
+    fn pow2() {
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(2), 21).cloned(),
+            BigInt::from_digit(1u32) << 21
+        );
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(4), 21).cloned(),
+            BigInt::from_digit(1u32) << 42
+        );
+    }
+    #[test]
+    fn x_pow_zero() {
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(50u32), 0).cloned(),
+            BigInt::from_digit(1)
+        );
+    }
+    #[test]
+    fn zero_pow_zero() {
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(0u32), 0).cloned(),
+            BigInt::from_digit(1)
+        );
+    }
+    #[test]
+    fn zero_pow_n() {
+        assert_eq!(
+            BigInt::pow(BigInt::from_digit(0u32), 50).cloned(),
+            BigInt::from_digit(0)
         );
     }
 }
