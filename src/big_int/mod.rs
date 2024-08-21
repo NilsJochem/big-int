@@ -47,27 +47,30 @@ impl SigNum {
             std::mem::transmute::<i8, Self>(value)
         }
     }
-    const fn from_uint(is_zero: bool) -> Self {
+    pub const fn from_uint(is_zero: bool) -> Self {
         // SAFETY: either 0 or 1
         unsafe { Self::from_i8(!is_zero as i8) }
     }
-    const fn is_negative(self) -> bool {
+    pub const fn is_negative(self) -> bool {
         self.into_i8().is_negative()
     }
-    const fn is_positive(self) -> bool {
+    pub const fn is_positive(self) -> bool {
         self.into_i8().is_positive()
     }
-    const fn is_zero(self) -> bool {
+    pub const fn is_zero(self) -> bool {
         self.into_i8() == 0
     }
-    const fn negate(self) -> Self {
+    #[must_use]
+    pub const fn negate(self) -> Self {
         self.const_mul(Self::Negative)
     }
-    const fn abs(self) -> Self {
+    #[must_use]
+    pub const fn abs(self) -> Self {
         // SAFETY: can only be 0 or 1
         unsafe { Self::from_i8(self.into_i8().abs()) }
     }
-    const fn const_mul(self, rhs: Self) -> Self {
+    #[must_use]
+    pub const fn const_mul(self, rhs: Self) -> Self {
         // SAFETY: can only be -1,0 or 1
         unsafe { Self::from_i8(self.into_i8() * rhs.into_i8()) }
     }
@@ -871,7 +874,7 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Moo::Owned(math_algos::mul::naive(&lhs, &rhs)),
         }
     }
-    pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,

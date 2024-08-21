@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{
-    big_int::{digits::Digit, math_algos::gcd::Gcd, BigInt},
+    big_int::{digits::Digit, math_algos::gcd::Gcd, BigInt, SigNum},
     boo::{Boo, Moo},
 };
 
@@ -51,6 +51,17 @@ impl<D: Digit> Decimal<D> {
     fn extend(&mut self, rhs: &BigInt<D>) {
         self.numerator *= rhs;
         self.denominator *= rhs;
+    }
+    pub const fn signum(&self) -> SigNum {
+        #[allow(clippy::manual_assert)]
+        #[cfg(debug_assertions)]
+        if !self.denominator.signum().is_positive() {
+            panic!("denominator shouldn't be zero or negative")
+        }
+        self.numerator.signum()
+    }
+    pub fn abs_cmp_one(&self) -> std::cmp::Ordering {
+        self.numerator.abs_ord(&self.denominator)
     }
 
     pub fn div_mod_euclid(self) -> (BigInt<D>, BigInt<D>) {
