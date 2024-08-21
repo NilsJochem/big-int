@@ -871,6 +871,28 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Moo::Owned(math_algos::mul::naive(&lhs, &rhs)),
         }
     }
+    pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        B2: Into<Boo<'b2, Self>>,
+        D: 'b1 + 'b2,
+    {
+        let pow = pow.into();
+        assert!(
+            !matches!(pow, Boo::BorrowedMut(_)),
+            "will not assign to power"
+        );
+        assert!(!pow.is_negative(), "can't pow ints by negatives");
+        let mut pow = pow.cloned();
+        let mut lhs: Moo<Self> = Moo::from(lhs.into());
+        let orig = std::mem::replace(lhs.get_mut(), Self::from(1));
+        let one = Self::from(1);
+        while !pow.is_zero() {
+            pow -= &one;
+            *lhs *= &orig;
+        }
+        lhs
+    }
 
     pub(crate) fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
@@ -936,13 +958,13 @@ impl<D: Digit> BigInt<D> {
         let (mut n, lhs) = lhs.take_keep_ref();
         let (mut d, rhs) = rhs.take_keep_ref();
 
-let map_r = n.is_negative().then(|| d.abs_clone());
+        let map_r = n.is_negative().then(|| d.abs_clone());
         let signum = n.take_sign() * d.take_sign();
 
         let (mut q, mut r) = math_algos::div::normalized_schoolbook(n, d);
 
         q.signum = signum;
-if let Some(d) = map_r.filter(|_| !r.is_zero()) {
+        if let Some(d) = map_r.filter(|_| !r.is_zero()) {
             q -= Self::from(1);
             r = d - r;
         }
