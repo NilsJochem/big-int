@@ -168,9 +168,12 @@ impl<D: Digit> std::fmt::Display for BigInt<D> {
         }
         let mut buf = Vec::new();
         while !number.is_zero() {
-            let (_, remainder) = Self::div_mod_euclid(&mut number, &radix);
+            let (_, mut remainder) = Self::div_mod_euclid(&mut number, &radix);
             debug_assert!(remainder.digits.len() <= 1);
-            buf.push(remainder.digits[0]);
+            buf.push(remainder.digits.pop().unwrap_or_default());
+        }
+        if buf.is_empty() {
+            buf.push(D::default());
         }
         if let Some(pad) = f.width() {
             match f.align() {
