@@ -251,9 +251,32 @@ pub(super) mod big_math {
         let rhs = rhs.into();
         let result = result.into();
 
-        test_op(lhs.clone(), rhs.clone(), &op, result.clone(), op_dbg);
+        test_op(
+            lhs.clone(),
+            rhs.clone(),
+            &op,
+            result.clone(),
+            op_dbg,
+            Side::Both,
+        );
 
-        test_op(rhs, lhs, op, result, op_dbg);
+        test_op(rhs, lhs, op, result, op_dbg, Side::Both);
+    }
+    #[allow(dead_code)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Side {
+        Left,
+        Right,
+        Both,
+        Neither,
+    }
+    impl Side {
+        const fn do_left(self) -> bool {
+            matches!(self, Self::Left | Self::Both)
+        }
+        const fn do_right(self) -> bool {
+            matches!(self, Self::Right | Self::Both)
+        }
     }
     #[allow(clippy::similar_names)]
     pub fn test_op<D: Digit>(
@@ -262,6 +285,7 @@ pub(super) mod big_math {
         op: impl for<'b> Fn(Boo<'b, BigInt<D>>, Boo<'b, BigInt<D>>) -> Moo<'b, BigInt<D>>,
         result: impl Into<BigInt<D>>,
         op_dbg: impl AsRef<str>,
+        test_mut: Side,
     ) {
         let lhs = lhs.into();
         let rhs = rhs.into();
@@ -279,14 +303,14 @@ pub(super) mod big_math {
             assert!(matches!(res, Moo::Owned(_)), "res owned with {dbg}");
             validate(res, dbg);
         };
-        {
+        if test_mut.do_left() {
             let mut lhs = lhs.clone();
             let res = op(Boo::from(&mut lhs), Boo::from(&rhs));
             let msg = build_msg_id("&mut", "&");
             validate_mut(res, &msg);
             assert_eq!(lhs, result, "assigned with {msg}");
         }
-        {
+        if test_mut.do_left() {
             let mut lhs = lhs.clone();
             let res = op(Boo::from(&mut lhs), Boo::from(rhs.clone()));
             let msg = build_msg_id("&mut", "");
@@ -294,14 +318,14 @@ pub(super) mod big_math {
             assert_eq!(lhs, result, "assigned with {msg}");
         }
 
-        {
+        if test_mut.do_right() {
             let mut rhs = rhs.clone();
             let res = op(Boo::from(&lhs), Boo::from(&mut rhs));
             let msg = build_msg_id("&", "&mut");
             validate_mut(res, &msg);
             assert_eq!(rhs, result, "assigned with {msg}");
         }
-        {
+        if test_mut.do_right() {
             let mut rhs = rhs.clone();
             let res = op(Boo::from(lhs.clone()), Boo::from(&mut rhs));
             let msg = build_msg_id("", "&mut");
@@ -496,6 +520,7 @@ pub(super) mod big_math {
             |a, b| BigInt::<u32>::sub(a, b),
             0x9999_9999_9999_9999i128,
             "-",
+            Side::Both,
         );
         test_op_commute(
             0x1122_3344_5566_7788i128,
@@ -514,6 +539,7 @@ pub(super) mod big_math {
             |a, b| BigInt::<u32>::sub(a, b),
             0x1122_3344_5566_7788i128,
             "-",
+            Side::Both,
         );
         test_op_commute(
             0x9999_9999_9999_9999i128,
@@ -525,8 +551,8 @@ pub(super) mod big_math {
     }
     #[test]
     fn sub_sign() {
-        test_op(1, 2, |a, b| BigInt::<u32>::sub(a, b), -1, "-");
-        test_op(-1, -2, |a, b| BigInt::<u32>::sub(a, b), 1, "-");
+        test_op(1, 2, |a, b| BigInt::<u32>::sub(a, b), -1, "-", Side::Both);
+        test_op(-1, -2, |a, b| BigInt::<u32>::sub(a, b), 1, "-", Side::Both);
     }
     #[test]
     fn sub_overflow() {
@@ -536,6 +562,7 @@ pub(super) mod big_math {
             |a, b| BigInt::<u32>::sub(a, b),
             0xffff_ffff_ffff_ffff_ffff_ffff_ffffi128,
             "-",
+            Side::Both,
         );
     }
 

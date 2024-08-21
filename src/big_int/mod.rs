@@ -449,14 +449,17 @@ impl<D: Digit> BigInt<D> {
         self.digits.push(value);
     }
 
+    pub const fn signum(&self) -> SigNum {
+        self.signum
+    }
     pub const fn is_negative(&self) -> bool {
-        self.signum.is_negative()
+        self.signum().is_negative()
     }
     pub const fn is_positive(&self) -> bool {
-        self.signum.is_positive()
+        self.signum().is_positive()
     }
     pub const fn is_zero(&self) -> bool {
-        self.signum.is_zero()
+        self.signum().is_zero()
     }
     pub fn is_abs_one(&self) -> bool {
         self.digits.len() == 1 && self.digits[0].eq_u8(1)
@@ -933,10 +936,16 @@ impl<D: Digit> BigInt<D> {
         let (mut n, lhs) = lhs.take_keep_ref();
         let (mut d, rhs) = rhs.take_keep_ref();
 
+let map_r = n.is_negative().then(|| d.abs_clone());
         let signum = n.take_sign() * d.take_sign();
 
-        let (mut q, r) = math_algos::div::normalized_schoolbook(n, d);
+        let (mut q, mut r) = math_algos::div::normalized_schoolbook(n, d);
+
         q.signum = signum;
+if let Some(d) = map_r.filter(|_| !r.is_zero()) {
+            q -= Self::from(1);
+            r = d - r;
+        }
 
         (Moo::from_with_value(lhs, q), Moo::from_with_value(rhs, r))
     }

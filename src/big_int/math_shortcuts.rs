@@ -231,13 +231,19 @@ pub mod div {
             lhs: Boo<'b, BigInt<D>>,
             rhs: Boo<'b, BigInt<D>>,
         ) -> Self::RES<'b, D> {
-            let signum = rhs.signum;
-            let (mut r, lhs) = lhs.take_keep_ref();
-            r *= signum;
-            (
-                Moo::from_with_value(lhs, BigInt::from(0)),
-                Moo::from_with_value(rhs, r),
-            )
+            let (a, lhs) = lhs.take_keep_ref();
+            if a.is_negative() {
+                let rhs_value = rhs.abs_clone();
+                (
+                    Moo::from_with_value(lhs, BigInt::from(1) * rhs.signum().negate()),
+                    Moo::from_with_value(rhs, rhs_value + a),
+                )
+            } else {
+                (
+                    Moo::from_with_value(lhs, BigInt::from(0)),
+                    Moo::from_with_value(rhs, a),
+                )
+            }
         }
     }
     pub struct Same;
@@ -321,6 +327,7 @@ mod tests {
             |lhs, rhs| M::do_shortcut(lhs, rhs),
             result,
             op_dbg,
+            crate::big_int::tests::big_math::Side::Both,
         );
     }
     fn test_shorcut_commte<M, S: Side, D: Digit + 'static>(
@@ -554,6 +561,53 @@ mod tests {
                 test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(2, -2, -4, super::OP_DBG);
                 test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(-2, -2, 4, super::OP_DBG);
             }
+        }
+    }
+
+    mod t_div {
+        use super::*;
+
+        fn test_div_shorcut<M, S: Side, D: Digit + 'static>(
+            lhs: impl Into<BigInt<D>> + Copy,
+            rhs: impl Into<BigInt<D>> + Copy,
+            div_result: impl Into<BigInt<D>>,
+            mod_result: impl Into<BigInt<D>>,
+        ) where
+            for<'b> M: MathShortcut<S, RES<'b, D> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>)>,
+        {
+            crate::big_int::tests::big_math::test_op(
+                lhs,
+                rhs,
+                |lhs, rhs| M::do_shortcut(lhs, rhs).0,
+                div_result,
+                "/",
+                crate::big_int::tests::big_math::Side::Left,
+            );
+            crate::big_int::tests::big_math::test_op(
+                lhs,
+                rhs,
+                |lhs, rhs| M::do_shortcut(lhs, rhs).1,
+                mod_result,
+                "%",
+                crate::big_int::tests::big_math::Side::Right,
+            );
+        }
+
+        #[test]
+        fn use_shortcut_both_positive() {
+            test_div_shorcut::<div::Smaller, Left, u32>(1, 3, 0, 1);
+        }
+        #[test]
+        fn use_shortcut_lhs_negative() {
+            test_div_shorcut::<div::Smaller, Left, u32>(-1, 3, -1, 2);
+        }
+        #[test]
+        fn use_shortcut_rhs_negative() {
+            test_div_shorcut::<div::Smaller, Left, u32>(1, -3, 0, 1);
+        }
+        #[test]
+        fn use_shortcut_both_negative() {
+            test_div_shorcut::<div::Smaller, Left, u32>(-1, -3, 1, 2);
         }
     }
 }
