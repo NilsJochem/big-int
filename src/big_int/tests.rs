@@ -353,6 +353,40 @@ mod order {
     }
 }
 
+#[cfg(feature = "base64")]
+#[cfg(test)]
+mod base64 {
+    use super::BigInt;
+
+    #[test]
+    fn criss_cross() {
+        let num = BigInt::<u16>::from(0);
+        let engine = base64::engine::general_purpose::STANDARD;
+        let (signum, encode) = num.as_base64(&engine);
+        assert_eq!(
+            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
+            num,
+            "zero"
+        );
+
+        let num = BigInt::<u16>::from(123_456_789);
+        let (signum, encode) = num.as_base64(&engine);
+        assert_eq!(
+            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
+            num,
+            "big"
+        );
+
+        let num = -num;
+        let (signum, encode) = num.as_base64(&engine);
+        assert_eq!(
+            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
+            num,
+            "negative"
+        );
+    }
+}
+
 #[test]
 fn bits() {
     let mut num = BigInt::<u16>::from(0x0123_4567);

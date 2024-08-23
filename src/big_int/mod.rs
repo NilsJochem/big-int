@@ -1,16 +1,17 @@
-use common::extensions::iter::IteratorExt;
-use common::require;
+use common::{extensions::iter::IteratorExt, require};
 use itertools::{Either, Itertools};
 use rand::RngCore;
-use std::fmt::{Debug, Write};
-use std::iter;
-use std::num::NonZero;
-use std::ops::{
-    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
-    Mul, MulAssign, Neg, RangeInclusive, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub,
-    SubAssign,
+use std::{
+    fmt::{Debug, Write},
+    iter,
+    num::NonZero,
+    ops::{
+        Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div,
+        DivAssign, Mul, MulAssign, Neg, RangeInclusive, Rem, RemAssign, Shl, ShlAssign, Shr,
+        ShrAssign, Sub, SubAssign,
+    },
+    str::FromStr,
 };
-use std::str::FromStr;
 
 use crate::boo::{Boo, Moo};
 use math_shortcuts::MathShortcut;
@@ -162,7 +163,7 @@ impl<D: Digit> std::fmt::Debug for BigInt<D> {
 }
 impl<D: Digit> std::fmt::Display for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let radix = Self::from(10);
+        let radix = Self::from_digit(D::from(10));
         let mut number = self.clone();
         let has_sign = number.is_negative() || f.sign_plus();
         if number.is_negative() {
@@ -358,7 +359,7 @@ impl<D: Digit> FromStr for BigInt<D> {
 
         require!(!rest.is_empty(), FromStrErr::Empty);
 
-        Self::abs_from_base(rest, radix)
+        Self::abs_from_base(rest, radix, |c| c.to_digit(radix as u32))
             .map(|it| it * signum)
             .map_err(|mut err| {
                 match &mut err {
@@ -654,7 +655,11 @@ impl<D: Digit> BigInt<D> {
                 .flat_map(<D as Decomposable<u8>>::le_digits),
         ) * signum
     }
-    fn abs_from_base(source: &str, radix: u8) -> Result<Self, FromStrErr> {
+    fn abs_from_base(
+        source: &str,
+        radix: u8,
+        map: impl Fn(char) -> Option<u32>,
+    ) -> Result<Self, FromStrErr> {
         let mut num = Self::from(0);
         let mut digits = source
             .chars()
@@ -701,7 +706,7 @@ impl<D: Digit> BigInt<D> {
                 };
 
                 for (j, &(i, digit)) in digit_buf.iter().rev().enumerate() {
-                    match digit.to_digit(radix as u32) {
+                    match map(digit) {
                         Some(digit) => {
                             *buf |= &(D::from(digit as u8) << (shift * j));
                         }
@@ -711,7 +716,7 @@ impl<D: Digit> BigInt<D> {
             }
         } else {
             for (i, digit) in digits {
-                match digit.to_digit(radix as u32) {
+                match map(digit) {
                     Some(digit) => {
                         num *= D::from(radix);
                         num += Self::from(digit as u8);
@@ -722,6 +727,49 @@ impl<D: Digit> BigInt<D> {
         }
 
         Ok(num)
+    }
+
+    /// needs to newly allocate on big endian systems
+    /// will return the sign seperatly as this function cannot know which character isn't already used by the encoding, or otherwise not usable.
+    #[cfg(feature = "base64")]
+    pub fn as_base64(&self, engine: &impl base64::Engine) -> (SigNum, String) {
+        (
+            self.signum,
+            if cfg!(target_endian = "little") {
+                engine.encode(self.le_bytes_ref())
+            } else {
+                let buf = self
+                    .digits
+                    .iter()
+                    .flat_map(<D as Decomposable<u8>>::le_digits)
+                    .collect_vec();
+                engine.encode(&buf)
+            },
+        )
+    }
+    #[cfg(feature = "base64")]
+    pub fn from_base64(
+        signum: SigNum,
+        data: impl AsRef<[u8]>,
+        engine: &impl base64::Engine,
+    ) -> Result<Self, base64::DecodeError> {
+        engine.decode(data).map(|it| {
+            let num = Self::from_iter(it);
+            assert!(
+                !signum.is_zero() || num.is_zero(),
+                "given signum was zero, but decoded number not"
+            );
+            num * signum
+        })
+    }
+
+    #[cfg(target_endian = "little")]
+    #[cfg(feature = "base64")]
+    fn le_bytes_ref(&self) -> &[u8] {
+        // SAFETY: as digits are all numbers, accessing their bytes should be fine
+        unsafe {
+            std::slice::from_raw_parts(self.digits.as_ptr().cast(), self.digits.len() * D::BYTES)
+        }
     }
 
     fn assert_pair_valid(lhs: &Boo<'_, Self>, rhs: &Boo<'_, Self>) {

@@ -8,6 +8,11 @@ rand = "0.8.5"
 derive_more = { version = "1.0.0", features = ["from"] }
 itertools = "0.13.0"
 common = { git = "ssh://git@github.com/NilsJochem/rust-common" }
+base64 = { version = "0.22.1", optional = true }
+
+[features]
+default = ["base64"]
+base64 = ["dep:base64"]
 
 [lints]
 # base
