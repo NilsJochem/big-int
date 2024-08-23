@@ -47,6 +47,121 @@ mod create {
     }
 
     #[test]
+    fn from_str_err() {
+        assert_eq!("".parse::<BigInt<u8>>(), Err(FromStrErr::Empty));
+        assert_eq!("0x".parse::<BigInt<u8>>(), Err(FromStrErr::Empty));
+
+        assert_eq!(
+            "0t".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkoneRadix('t'))
+        );
+
+        assert_eq!(
+            "123t".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkownDigit {
+                digit: 't',
+                position: 3
+            })
+        );
+        assert_eq!(
+            "0b01210".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkownDigit {
+                digit: '2',
+                position: 4
+            })
+        );
+    }
+
+    #[test]
+    fn from_default_radix() {
+        assert_eq!("0".parse::<BigInt<u8>>(), Ok(BigInt::from_digit(0)));
+        assert_eq!("1234".parse::<BigInt<u8>>(), Ok(BigInt::from(1234)));
+        assert_eq!("-1234".parse::<BigInt<u8>>(), Ok(BigInt::from(-1234)));
+        assert_eq!("1_234".parse::<BigInt<u8>>(), Ok(BigInt::from(1234)));
+        assert_eq!("-1_234".parse::<BigInt<u8>>(), Ok(BigInt::from(-1234)));
+
+        assert_eq!(
+            "a".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkownDigit {
+                digit: 'a',
+                position: 0
+            })
+        );
+    }
+    #[test]
+    fn from_radix_two() {
+        assert_eq!(
+            "0b0".parse::<BigInt<u8>>(),
+            Ok(BigInt::from_digit(0)),
+            "detecting zero"
+        );
+        assert_eq!(
+            "0b00000".parse::<BigInt<u8>>(),
+            Ok(BigInt::from_digit(0)),
+            "detecting leading zeros"
+        );
+        assert_eq!(
+            "0b1010101010".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(0b10_1010_1010))
+        );
+        assert_eq!(
+            "-0b1010101010".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(-0b10_1010_1010)),
+            "detecting negative"
+        );
+        assert_eq!(
+            "0b10_1010_1010".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(0b10_1010_1010)),
+            "ignoring underscores"
+        );
+
+        assert_eq!(
+            "0b2".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkownDigit {
+                digit: '2',
+                position: 2
+            }),
+            "complaining about unkown digits"
+        );
+    }
+    #[test]
+    fn from_radix_hex() {
+        assert_eq!(
+            "0x0".parse::<BigInt<u8>>(),
+            Ok(BigInt::from_digit(0)),
+            "detecting zero"
+        );
+        assert_eq!(
+            "0x00000".parse::<BigInt<u8>>(),
+            Ok(BigInt::from_digit(0)),
+            "detecting leading zeros"
+        );
+        assert_eq!(
+            "0x1234cdef".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(0x1234_cdef))
+        );
+        assert_eq!(
+            "-0x1234cdef".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(-0x1234_cdef)),
+            "detecting negative"
+        );
+        assert_eq!(
+            "0x1234cdef".parse::<BigInt<u8>>(),
+            Ok(BigInt::from(0x1234_cdef)),
+            "ignoring underscores"
+        );
+
+        assert_eq!(
+            "0xg".parse::<BigInt<u8>>(),
+            Err(FromStrErr::UnkownDigit {
+                digit: 'g',
+                position: 2
+            }),
+            "complaining about unkown digits"
+        );
+    }
+
+    #[test]
     fn fuzz_new_random() {
         const TRIES: usize = 100_000;
 

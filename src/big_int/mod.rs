@@ -10,6 +10,7 @@ use std::ops::{
     Mul, MulAssign, Neg, RangeInclusive, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub,
     SubAssign,
 };
+use std::str::FromStr;
 
 use crate::boo::{Boo, Moo};
 use math_shortcuts::MathShortcut;
@@ -335,6 +336,63 @@ impl<PRIMITIVE: primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum FromStrErr {
+    UnkownDigit { digit: char, position: usize },
+    UnkoneRadix(char),
+    Empty,
+}
+impl<D: Digit> FromStr for BigInt<D> {
+    type Err = FromStrErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        require!(!s.is_empty(), FromStrErr::Empty);
+        let mut digits = s.chars().enumerate().peekable();
+        let signum = match digits.peek() {
+            Some((_, '-')) => {
+                let _ = digits.next();
+                SigNum::Negative
+            }
+            Some((_, '+')) => {
+                let _ = digits.next();
+                SigNum::Positive
+            }
+            None | Some(_) => SigNum::Positive,
+        };
+        let mut num = Self::from(0);
+        let radix: u8 = if let Some((_, '0')) = digits.peek() {
+            let _ = digits.next();
+            match digits.next() {
+                Some((_, 'x')) => 16,
+                Some((_, 'd')) => 10,
+                Some((_, 'b')) => 2,
+                Some((_, 'o')) => 8,
+                Some((_, c)) => return Err(FromStrErr::UnkoneRadix(c)),
+                None => return Ok(num),
+            }
+        } else {
+            10
+        };
+        let mut digits = digits.filter(|(_, digit)| *digit != '_').peekable();
+        if digits.peek().is_none() {
+            return Err(FromStrErr::Empty);
+        }
+        // TODO maybo optimize by trying to fill one D up and accumulate change
+        for (i, digit) in digits {
+            match digit.to_digit(radix as u32) {
+                Some(digit) => {
+                    num *= D::from(radix);
+                    num += Self::from(digit as u8);
+                }
+                None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
+            }
+        }
+        num *= signum;
+        Ok(num)
+    }
+}
+
 impl<D: Digit> Convert<usize> for BigInt<D> {
     fn try_into(&self) -> Option<usize> {
         if self.signum().is_negative() || self.signum().is_negative() {
