@@ -32,12 +32,13 @@ pub trait Digit:
     + UpperHex
     + From<u8>
     + From<bool>
+    + ShrAssign<usize>
+    + Shl<usize, Output = Self>
 where
     for<'r> Self: BitOrAssign<&'r Self>
         + BitAndAssign<&'r Self>
         + BitXorAssign<&'r Self>
-        + BitXor<&'r Self, Output = Self>
-        + ShrAssign<usize>,
+        + BitXor<&'r Self, Output = Self>,
 {
     const BYTES: usize;
     const BASIS_POW: usize = (Self::BYTES * 8);
@@ -407,6 +408,12 @@ impl BitXor<&Self> for HalfSize {
 impl ShrAssign<usize> for HalfSize {
     fn shr_assign(&mut self, rhs: usize) {
         self.0 >>= rhs;
+    }
+}
+impl Shl<usize> for HalfSize {
+    type Output = Self;
+    fn shl(self, rhs: usize) -> Self::Output {
+        Self(self.0 << rhs)
     }
 }
 
