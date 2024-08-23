@@ -347,96 +347,59 @@ impl<D: Digit> FromStr for BigInt<D> {
     type Err = FromStrErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        require!(!s.is_empty(), FromStrErr::Empty);
-        let mut digits = s.chars().enumerate().peekable();
-        let signum = match digits.peek() {
-            Some((_, '-')) => {
-                let _ = digits.next();
-                SigNum::Negative
-            }
-            Some((_, '+')) => {
-                let _ = digits.next();
-                SigNum::Positive
-            }
-            None | Some(_) => SigNum::Positive,
-        };
-        let mut num = Self::from(0);
-        let radix: u8 = if let Some((_, '0')) = digits.peek() {
-            let _ = digits.next();
-            match digits.next() {
-                Some((_, 'x')) => 16,
-                Some((_, 'b')) => 2,
-                Some((_, 'd')) => 10,
-                Some((_, 'o')) => 8,
-                Some((_, c)) => return Err(FromStrErr::UnkoneRadix(c)),
-                None => return Ok(num),
-            }
-        } else {
-            10
-        };
-        let mut digits = digits.filter(|(_, digit)| *digit != '_').peekable();
-        if digits.peek().is_none() {
-            return Err(FromStrErr::Empty);
-        }
-        digits
-            .by_ref()
-            .take_while_ref(|(_, it)| *it == '0')
-            .for_each(drop);
-        if digits.peek().is_none() {
-            return Ok(num);
-        }
+        let (signum, rest) = strip_sign(s);
+        let signum = signum.unwrap_or(SigNum::Positive);
 
-        if [2, 16].contains(&radix) {
-            // optimize by trying to fill one D up and accumulate change
-            let shift = radix.ilog2() as usize;
-            let num_sub_digits = D::BASIS_POW / shift;
-            let mut digit_buf = Vec::with_capacity(num_sub_digits);
-            for (pos, n_digits) in digits
-                .chunks(digit_buf.capacity())
-                .into_iter()
-                .with_position()
-            {
-                digit_buf.clear();
-                debug_assert_eq!(digit_buf.capacity(), num_sub_digits);
-                digit_buf.extend(n_digits);
+        let (radix, rest) = match strip_radix(rest) {
+            Ok((radix, rest)) => (radix.unwrap_or(10), rest),
+            Err(StripRadix::UnkoneRadix(c)) => return Err(FromStrErr::UnkoneRadix(c)),
+            Err(StripRadix::OnlyZero) => return Ok(Self::from(0)),
+        };
 
-                num.digits.push(D::default());
-                let buf = if matches!(pos, itertools::Position::Last | itertools::Position::Only) {
-                    num.digits.reverse();
-                    num.signum = signum;
-                    num.truncate_leading_zeros();
-                    num >>= D::BASIS_POW - (digit_buf.len() * shift);
-                    if num.digits.is_empty() {
-                        num.digits.push(D::default());
+        require!(!rest.is_empty(), FromStrErr::Empty);
+
+        Self::abs_from_base(rest, radix)
+            .map(|it| it * signum)
+            .map_err(|mut err| {
+                match &mut err {
+                    FromStrErr::UnkownDigit { digit: _, position } => {
+                        *position += s.len() - rest.len();
                     }
-                    num.digits.first_mut().unwrap()
-                } else {
-                    num.digits.last_mut().unwrap()
+                    FromStrErr::UnkoneRadix(_) | FromStrErr::Empty => {}
                 };
+                err
+            })
+    }
+}
 
-                for (j, &(i, digit)) in digit_buf.iter().rev().enumerate() {
-                    match digit.to_digit(radix as u32) {
-                        Some(digit) => {
-                            *buf |= &(D::from(digit as u8) << (shift * j));
-                        }
-                        None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
-                    }
-                }
-            }
-        } else {
-            for (i, digit) in digits {
-                match digit.to_digit(radix as u32) {
-                    Some(digit) => {
-                        num *= D::from(radix);
-                        num += Self::from(digit as u8);
-                    }
-                    None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
-                }
-            }
-            num *= signum;
-        }
+fn strip_sign(s: &str) -> (Option<SigNum>, &str) {
+    match s.chars().next() {
+        Some('-') => (Some(SigNum::Negative), &s[1..]),
+        Some('+') => (Some(SigNum::Positive), &s[1..]),
+        None | Some(_) => (None, s),
+    }
+}
+enum StripRadix {
+    UnkoneRadix(char),
+    OnlyZero,
+}
+fn strip_radix(s: &str) -> Result<(Option<u8>, &str), StripRadix> {
+    let mut chars = s.chars();
 
-        Ok(num)
+    if chars.next() == Some('0') {
+        Ok((
+            Some(match chars.next() {
+                Some('x') => 16,
+                Some('b') => 2,
+                Some('d') => 10,
+                Some('o') => 8,
+                Some(c) => return Err(StripRadix::UnkoneRadix(c)),
+                None => return Err(StripRadix::OnlyZero),
+            }),
+            &s[2..],
+        ))
+    } else {
+        Ok((None, s))
     }
 }
 
@@ -681,6 +644,84 @@ impl<D: Digit> BigInt<D> {
         let signum = self.signum;
         self.abs();
         signum
+    }
+
+    pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {
+        let signum = self.signum;
+        BigInt::<D2>::from_iter(
+            self.digits
+                .iter()
+                .flat_map(<D as Decomposable<u8>>::le_digits),
+        ) * signum
+    }
+    fn abs_from_base(source: &str, radix: u8) -> Result<Self, FromStrErr> {
+        let mut num = Self::from(0);
+        let mut digits = source
+            .chars()
+            .enumerate()
+            .filter(|(_, digit)| *digit != '_')
+            .peekable();
+        if digits.peek().is_none() {
+            return Err(FromStrErr::Empty);
+        }
+        digits
+            .by_ref()
+            .take_while_ref(|(_, it)| *it == '0')
+            .for_each(drop);
+        if digits.peek().is_none() {
+            return Ok(num);
+        }
+
+        if [2, 16].contains(&radix) {
+            // optimize by trying to fill one D up and accumulate change
+            let shift = radix.ilog2() as usize;
+            let num_sub_digits = D::BASIS_POW / shift;
+            let mut digit_buf = Vec::with_capacity(num_sub_digits);
+            for (pos, n_digits) in digits
+                .chunks(digit_buf.capacity())
+                .into_iter()
+                .with_position()
+            {
+                digit_buf.clear();
+                debug_assert_eq!(digit_buf.capacity(), num_sub_digits);
+                digit_buf.extend(n_digits);
+
+                num.digits.push(D::default());
+                let buf = if matches!(pos, itertools::Position::Last | itertools::Position::Only) {
+                    num.digits.reverse();
+                    num.signum = SigNum::Positive;
+                    num.truncate_leading_zeros();
+                    num >>= D::BASIS_POW - (digit_buf.len() * shift);
+                    if num.digits.is_empty() {
+                        num.digits.push(D::default());
+                    }
+                    num.digits.first_mut().unwrap()
+                } else {
+                    num.digits.last_mut().unwrap()
+                };
+
+                for (j, &(i, digit)) in digit_buf.iter().rev().enumerate() {
+                    match digit.to_digit(radix as u32) {
+                        Some(digit) => {
+                            *buf |= &(D::from(digit as u8) << (shift * j));
+                        }
+                        None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
+                    }
+                }
+            }
+        } else {
+            for (i, digit) in digits {
+                match digit.to_digit(radix as u32) {
+                    Some(digit) => {
+                        num *= D::from(radix);
+                        num += Self::from(digit as u8);
+                    }
+                    None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
+                }
+            }
+        }
+
+        Ok(num)
     }
 
     fn assert_pair_valid(lhs: &Boo<'_, Self>, rhs: &Boo<'_, Self>) {
