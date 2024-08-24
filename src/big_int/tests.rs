@@ -1,7 +1,14 @@
+use digits::Decomposable;
+use itertools::Itertools;
+use signed::{BigInt, SigNum};
+use unsigned::BigInt as BigUInt;
+
 use super::*;
 mod create {
+    use unsigned::FromStrErr;
+
     use super::*;
-    use crate::{big_int::BigInt, rng::seeded_rng};
+    use crate::rng::seeded_rng;
     #[test]
     fn cast_signum() {
         for i in i8::MIN..=i8::MAX {
@@ -31,7 +38,9 @@ mod create {
             BigInt::<u32>::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]),
             BigInt {
                 signum: SigNum::Positive,
-                digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                unsigned: BigUInt {
+                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                }
             }
         );
     }
@@ -41,7 +50,9 @@ mod create {
             BigInt::<u32>::from(-0x9988_7766_5544_3322_1100i128),
             BigInt {
                 signum: SigNum::Negative,
-                digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                unsigned: BigUInt {
+                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                }
             }
         );
     }
@@ -168,7 +179,7 @@ mod create {
         let (seed, mut rng) = seeded_rng();
 
         for i in 0..TRIES {
-            let pick = BigInt::<u32>::new_random(2..=3, &mut rng);
+            let pick = BigUInt::<u32>::new_random(2..=3, &mut rng);
             assert!(pick.digits.len() == 1);
             let pick = pick.digits[0];
             assert!(
@@ -185,7 +196,7 @@ mod output {
         assert_eq!(
             format!(
                 "{:?}",
-                BigInt::<u32>::from(0x0000_7766_0000_5544_3322_1100u128)
+                signed::BigInt::<u32>::from(0x0000_7766_0000_5544_3322_1100u128)
             ),
             "Number { + 0x[00007766, 00005544, 33221100]}"
         );
@@ -355,66 +366,63 @@ mod order {
 
 #[cfg(feature = "base64")]
 #[cfg(test)]
-mod base64 {
-    use super::BigInt;
+mod t_base64 {
+    use super::*;
 
     #[test]
     fn criss_cross() {
-        let num = BigInt::<u16>::from(0);
+        let num = BigUInt::<u16>::from(0u16);
         let engine = base64::engine::general_purpose::STANDARD;
-        let (signum, encode) = num.as_base64(&engine);
+        let encode = num.as_base64(&engine);
         assert_eq!(
-            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
+            BigUInt::<u16>::from_base64(encode, &engine).unwrap(),
             num,
             "zero"
         );
 
-        let num = BigInt::<u16>::from(123_456_789);
-        let (signum, encode) = num.as_base64(&engine);
+        let num = BigUInt::<u16>::from(123_456_789u32);
+        let encode = num.as_base64(&engine);
         assert_eq!(
-            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
+            BigUInt::<u16>::from_base64(encode, &engine).unwrap(),
             num,
             "big"
-        );
-
-        let num = -num;
-        let (signum, encode) = num.as_base64(&engine);
-        assert_eq!(
-            BigInt::<u16>::from_base64(signum, encode, &engine).unwrap(),
-            num,
-            "negative"
         );
     }
 }
 
 #[test]
 fn bits() {
-    let mut num = BigInt::<u16>::from(0x0123_4567);
+    let mut num = unsigned::BigInt::<u16>::from(0x0123_4567u32);
     assert_eq!(
-        <BigInt::<_> as Decomposable<bool>>::le_digits(&num).collect_vec(),
+        <unsigned::BigInt::<_> as Decomposable<bool>>::le_digits(&num).collect_vec(),
         std::iter::from_fn(move || {
             if num.is_zero() {
                 None
             } else {
-                let (_, r) = BigInt::shr_internal(&mut num, 1);
+                let (_, r) = unsigned::BigInt::shr_internal(&mut num, 1);
                 Some(!r.is_zero())
             }
         })
         .collect_vec()
     );
     assert_eq!(
-        <BigInt<_> as Decomposable<bool>>::le_digits(&BigInt::<u32>::from(0)).next(),
+        <unsigned::BigInt<_> as Decomposable<bool>>::le_digits(&unsigned::BigInt::<u32>::from(0u8))
+            .next(),
         None
     );
 }
 pub(super) mod big_math {
 
+    use std::fmt::Debug;
+
+    use crate::boo::{Boo, Moo};
+
     use super::*;
-    pub fn test_op_commute<D: Digit>(
-        lhs: impl Into<BigInt<D>>,
-        rhs: impl Into<BigInt<D>>,
-        op: impl for<'b> Fn(Boo<'b, BigInt<D>>, Boo<'b, BigInt<D>>) -> Moo<'b, BigInt<D>>,
-        result: impl Into<BigInt<D>>,
+    pub fn test_op_commute<B: Clone + Eq + Debug>(
+        lhs: impl Into<B>,
+        rhs: impl Into<B>,
+        op: impl for<'b> Fn(Boo<'b, B>, Boo<'b, B>) -> Moo<'b, B>,
+        result: impl Into<B>,
         op_dbg: &str,
     ) {
         let lhs = lhs.into();
@@ -449,11 +457,11 @@ pub(super) mod big_math {
         }
     }
     #[allow(clippy::similar_names)]
-    pub fn test_op<D: Digit>(
-        lhs: impl Into<BigInt<D>>,
-        rhs: impl Into<BigInt<D>>,
-        op: impl for<'b> Fn(Boo<'b, BigInt<D>>, Boo<'b, BigInt<D>>) -> Moo<'b, BigInt<D>>,
-        result: impl Into<BigInt<D>>,
+    pub fn test_op<B: Clone + Eq + Debug>(
+        lhs: impl Into<B>,
+        rhs: impl Into<B>,
+        op: impl for<'b> Fn(Boo<'b, B>, Boo<'b, B>) -> Moo<'b, B>,
+        result: impl Into<B>,
         op_dbg: impl AsRef<str>,
         test_mut: Side,
     ) {
@@ -462,14 +470,14 @@ pub(super) mod big_math {
         let result = result.into();
         let op_dbg = op_dbg.as_ref();
         let build_msg_id = |t1: &str, t2: &str| format!("{t1}{lhs:?} {op_dbg} {t2}{rhs:?}");
-        let validate = |res: Moo<BigInt<D>>, dbg: &str| {
+        let validate = |res: Moo<B>, dbg: &str| {
             assert_eq!(*res, result, "res equals with {dbg}");
         };
-        let validate_mut = |res: Moo<BigInt<D>>, dbg: &str| {
+        let validate_mut = |res: Moo<B>, dbg: &str| {
             assert!(matches!(res, Moo::BorrowedMut(_)), "res mut ref with {dbg}");
             validate(res, dbg);
         };
-        let validate_non_mut = |res: Moo<BigInt<D>>, dbg: &str| {
+        let validate_non_mut = |res: Moo<B>, dbg: &str| {
             assert!(matches!(res, Moo::Owned(_)), "res owned with {dbg}");
             validate(res, dbg);
         };
@@ -516,79 +524,91 @@ pub(super) mod big_math {
         validate_non_mut(res, &format!("res equals with {}", build_msg_id("", "")));
     }
 
-    #[test]
-    fn bit_or() {
-        test_op_commute(
-            0x1111_00000000_00001111_01010101u128,
-            0x0101_01010101_11110000u128,
-            |a, b| BigInt::<u32>::bitor(a, b),
-            0x1111_00000101_01011111_11110101u128,
-            "|",
-        );
-    }
-    #[test]
-    fn bit_xor() {
-        test_op_commute(
-            0x1111_00000000_00001111_01010101u128,
-            0x0101_01010101_11110000u128,
-            |a, b| BigInt::<u32>::bitxor(a, b),
-            0x1111_00000101_01011010_10100101u128,
-            "^",
-        );
-    }
+    mod bit_math {
+        use super::*;
+        #[test]
+        fn bit_or() {
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigUInt::<u32>::bitor(a, b),
+                0x1111_00000101_01011111_11110101u128,
+                "|",
+            );
+        }
+        #[test]
+        fn bit_xor() {
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigUInt::<u32>::bitxor(a, b),
+                0x1111_00000101_01011010_10100101u128,
+                "^",
+            );
+        }
 
-    #[test]
-    fn bit_and() {
-        test_op_commute(
-            0x1111_00000000_00001111_01010101u128,
-            0x0101_01010101_11110000u128,
-            |a, b| BigInt::<u32>::bitand(a, b),
-            0x0101_01010000u128,
-            "&",
-        );
-    }
+        #[test]
+        fn bit_and() {
+            test_op_commute(
+                0x1111_00000000_00001111_01010101u128,
+                0x0101_01010101_11110000u128,
+                |a, b| BigUInt::<u32>::bitand(a, b),
+                0x0101_01010000u128,
+                "&",
+            );
+        }
 
-    #[test]
-    fn shl() {
-        assert_eq!(
-            BigInt::<u32>::from(0x0099_8877_6655_4433_2211u128) << 4,
-            BigInt::<u32>::from(0x0998_8776_6554_4332_2110u128)
-        );
-        assert_eq!(BigInt::<u32>::from(1) << 1, BigInt::<u32>::from(2));
-    }
-    #[test]
-    fn shr() {
-        assert_eq!(
-            BigInt::<u32>::from(0x0099_8877_6655_4433_2211u128) >> 4,
-            BigInt::<u32>::from(0x0009_9887_7665_5443_3221u128)
-        );
-    }
-    #[test]
-    fn shr_overflow() {
-        assert_eq!(
-            BigInt::<u32>::shr_internal(BigInt::<u32>::from(0x0099_8877_6655_4433_2211u128), 40),
-            (
-                Moo::from(BigInt::<u32>::from(0x9988_7766u32)),
-                BigInt::<u32>::from(0x55_4433_2211u64)
-            )
-        );
-        assert_eq!(
-            BigInt::<u8>::shr_internal(BigInt::from(0b0000_0110), 2),
-            (
-                Moo::from(BigInt::from(0b0000_0001)),
-                BigInt::from(0b0000_0010)
-            )
-        );
-    }
-    #[test]
-    fn shr_overflow_no_partial() {
-        assert_eq!(
-            BigInt::<u8>::shr_internal(BigInt::from(0x4433_2211), 16),
-            (Moo::from(BigInt::from(0x4433)), BigInt::from(0x2211))
-        );
+        #[test]
+        fn shl() {
+            assert_eq!(
+                BigUInt::<u32>::from(0x0099_8877_6655_4433_2211u128) << 4,
+                BigUInt::<u32>::from(0x0998_8776_6554_4332_2110u128)
+            );
+            assert_eq!(BigUInt::<u32>::from(1u32) << 1, BigUInt::<u32>::from(2u32));
+        }
+        #[test]
+        fn shr() {
+            assert_eq!(
+                BigUInt::<u32>::from(0x0099_8877_6655_4433_2211u128) >> 4,
+                BigUInt::<u32>::from(0x0009_9887_7665_5443_3221u128)
+            );
+        }
+        #[test]
+        fn shr_overflow() {
+            assert_eq!(
+                BigUInt::<u32>::shr_internal(
+                    BigUInt::<u32>::from(0x0099_8877_6655_4433_2211u128),
+                    40
+                ),
+                (
+                    Moo::from(BigUInt::<u32>::from(0x9988_7766u32)),
+                    BigUInt::<u32>::from(0x55_4433_2211u64)
+                )
+            );
+            assert_eq!(
+                BigUInt::<u8>::shr_internal(BigUInt::from(0b0000_0110u32), 2),
+                (
+                    Moo::from(BigUInt::from(0b0000_0001u32)),
+                    BigUInt::from(0b0000_0010u32)
+                )
+            );
+        }
+        #[test]
+        fn shr_overflow_no_partial() {
+            assert_eq!(
+                BigUInt::<u8>::shr_internal(BigUInt::from(0x4433_2211u32), 16),
+                (
+                    Moo::from(BigUInt::from(0x4433u32)),
+                    BigUInt::from(0x2211u32)
+                )
+            );
+        }
     }
     mod digits {
+        use std::num::NonZero;
+
         use super::*;
+        use unsigned::radix::Radix;
 
         #[test]
         fn radix() {
@@ -598,7 +618,7 @@ pub(super) mod big_math {
             );
             assert_eq!(
                 Radix::<u8>::try_from(3),
-                Ok(Radix::Other(BigInt::from_digit(3)))
+                Ok(Radix::Other(BigUInt::from_digit(3)))
             );
             assert_eq!(
                 Radix::<u8>::try_from(4),
@@ -801,34 +821,34 @@ pub(super) mod big_math {
     #[test]
     fn div_sign() {
         assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(6), BigInt::from_digit(4)),
+            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from_digit(4)),
             (
                 Moo::Owned(BigInt::from_digit(1)),
-                Moo::Owned(BigInt::from_digit(2))
+                Moo::Owned(BigInt::from_digit(3))
             ),
             "no negative"
         );
         assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(6), BigInt::from(-4)),
+            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from(-4)),
             (
                 Moo::Owned(BigInt::from(-1)),
-                Moo::Owned(BigInt::from_digit(2))
+                Moo::Owned(BigInt::from_digit(3))
             ),
             "rhs negative"
         );
         assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from(-6), BigInt::from(4)),
+            BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(4)),
             (
-                Moo::Owned(BigInt::from(-1)),
-                Moo::Owned(BigInt::from_digit(2))
+                Moo::Owned(BigInt::from(-2)),
+                Moo::Owned(BigInt::from_digit(1))
             ),
             "lhs negative"
         );
         assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from(-6), BigInt::from(-4)),
+            BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(-4)),
             (
-                Moo::Owned(BigInt::from(1)),
-                Moo::Owned(BigInt::from_digit(2))
+                Moo::Owned(BigInt::from(2)),
+                Moo::Owned(BigInt::from_digit(1))
             ),
             "both negative"
         );
@@ -859,12 +879,12 @@ pub(super) mod big_math {
     #[test]
     fn pow2() {
         assert_eq!(
-            BigInt::pow(BigInt::from_digit(2), 21).cloned(),
-            BigInt::from_digit(1u32) << 21
+            BigUInt::pow(BigUInt::from_digit(2), 21).cloned(),
+            BigUInt::from_digit(1u32) << 21
         );
         assert_eq!(
-            BigInt::pow(BigInt::from_digit(4), 21).cloned(),
-            BigInt::from_digit(1u32) << 42
+            BigUInt::pow(BigUInt::from_digit(4), 21).cloned(),
+            BigUInt::from_digit(1u32) << 42
         );
     }
     #[test]

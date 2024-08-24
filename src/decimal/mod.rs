@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{
-    big_int::{digits::Digit, math_algos::gcd::Gcd, BigInt, SigNum},
+    big_int::{digits::Digit, math_algos::gcd::Gcd, signed::BigInt, signed::SigNum},
     boo::{Boo, Moo},
 };
 
@@ -20,7 +20,7 @@ impl<D: Digit> TryFrom<Decimal<D>> for BigInt<D> {
     type Error = Decimal<D>;
 
     fn try_from(value: Decimal<D>) -> Result<Self, Self::Error> {
-        if value.denominator.is_abs_one() {
+        if value.denominator.is_one() {
             Ok(value.numerator)
         } else {
             Err(value)
@@ -33,7 +33,7 @@ impl<D: Digit> Decimal<D> {
         let mut numerator = numerator.into();
         let mut denominator = denominator.into();
         debug_assert!(!denominator.is_zero());
-        debug_assert!(!numerator.is_zero() || denominator.is_abs_one());
+        debug_assert!(!numerator.is_zero() || denominator.is_one());
         numerator *= denominator.take_sign();
         Self {
             numerator,

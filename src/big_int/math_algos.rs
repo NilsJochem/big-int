@@ -1,8 +1,12 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use digits::{Digit, Wide};
 use itertools::Itertools;
+use unsigned::BigInt;
+// use signed::BigInt;
 
 pub mod bit_math {
+
     use super::*;
     fn op_assign_zipped<'b, D: 'b>(
         lhs: &mut BigInt<D>,
@@ -35,11 +39,7 @@ pub mod add {
 
     /// calculates `lhs` += `rhs`, both need to have the same sign, but either may be zero
     /// prefers lhs to be the longer number
-    pub fn assign_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
-        assert!(
-            lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
-            "lhs and rhs had differend signs"
-        );
+    pub fn assign<D: Digit>(lhs: &mut unsigned::BigInt<D>, rhs: &unsigned::BigInt<D>) {
         let orig_lhs_len = lhs.digits.len();
         lhs.digits.extend(rhs.digits.iter().skip(orig_lhs_len));
 
@@ -61,9 +61,6 @@ pub mod add {
             (*lhs_digit, carry) = lhs_digit.carring_add(rhs_digit, carry);
         }
         lhs.push(carry);
-        if lhs.is_zero() {
-            lhs.signum = rhs.signum;
-        }
         lhs.truncate_leading_zeros();
     }
 }
@@ -73,12 +70,8 @@ pub mod sub {
 
     /// calculates `lhs` -= `rhs`, both need to have the same sign, but either may be zero
     /// lhs needs to be the longer number
-    pub fn assign_smaller_same_sign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
-        assert!(
-            lhs.is_zero() || rhs.is_zero() || lhs.signum == rhs.signum,
-            "lhs and rhs had differend signs"
-        );
-        assert!(lhs.abs_ord(rhs).is_ge(), "lhs is smaller than rhs");
+    pub fn assign_smaller<D: Digit>(lhs: &mut unsigned::BigInt<D>, rhs: &unsigned::BigInt<D>) {
+        assert!(*lhs >= *rhs, "lhs is smaller than rhs");
 
         let mut carry = false;
         for elem in lhs.digits.iter_mut().zip_longest(rhs.digits.iter()) {
@@ -100,25 +93,29 @@ pub mod sub {
 }
 
 pub mod mul {
+    use digits::Wide;
+
     use super::*;
 
-    pub fn naive<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> BigInt<D> {
+    pub fn naive<D: Digit>(
+        lhs: &unsigned::BigInt<D>,
+        rhs: &unsigned::BigInt<D>,
+    ) -> unsigned::BigInt<D> {
         // try to minimize outer loops
         if lhs.digits.len() < rhs.digits.len() {
             return naive(rhs, lhs);
         }
-        let mut out = BigInt::default();
+        let mut out = unsigned::BigInt::default();
         for (i, rhs_digit) in rhs.digits.iter().enumerate().rev() {
             let mut result = std::ops::Mul::mul(lhs.clone(), rhs_digit);
             result <<= i * D::BASIS_POW;
             out += result;
         }
 
-        out.signum = lhs.signum * rhs.signum;
         out.truncate_leading_zeros();
         out
     }
-    pub fn assign_mul_digit_at_offset<D: Digit>(lhs: &mut BigInt<D>, rhs: D, i: usize) {
+    pub fn assign_mul_digit_at_offset<D: Digit>(lhs: &mut unsigned::BigInt<D>, rhs: D, i: usize) {
         let mut carry = D::default();
         for digit in lhs.digits.iter_mut().skip(i) {
             (*digit, carry) = digit.widening_mul(rhs, carry).split_le();
@@ -129,6 +126,9 @@ pub mod mul {
 }
 
 pub mod div {
+
+    use crate::boo::Moo;
+
     use super::*;
 
     /// computes (lhs/rhs, lhs%rhs)
@@ -137,10 +137,6 @@ pub mod div {
         mut lhs: BigInt<D>,
         mut rhs: BigInt<D>,
     ) -> (BigInt<D>, BigInt<D>) {
-        debug_assert!(
-            !lhs.is_negative() && !rhs.is_negative(),
-            "only positive allowed"
-        );
         let shift =
             D::BASIS_POW - (rhs.digits.last().expect("can't divide by 0").ilog2() as usize + 1);
         lhs <<= shift;
@@ -159,13 +155,13 @@ pub mod div {
         );
 
         if m < n {
-            return (BigInt::from(0), lhs);
+            return (BigInt::from(0u8), lhs);
         }
         if m == n {
             return if lhs < rhs {
-                (BigInt::from(0), lhs)
+                (BigInt::from(0u8), lhs)
             } else {
-                (BigInt::from(1), lhs - rhs)
+                (BigInt::from(1u8), lhs - rhs)
             };
         }
         if m == n + 1 {
@@ -198,13 +194,13 @@ pub mod div {
         );
 
         match lhs.cmp(rhs) {
-            std::cmp::Ordering::Less => return (BigInt::from(0), lhs.clone()),
-            std::cmp::Ordering::Equal => return (BigInt::from(1), BigInt::from(0)),
+            std::cmp::Ordering::Less => return (BigInt::from(0u8), lhs.clone()),
+            std::cmp::Ordering::Equal => return (BigInt::from(1u8), BigInt::from(0u8)),
             std::cmp::Ordering::Greater => {}
         }
         {
             let rhs_times_basis = rhs << D::BASIS_POW;
-            let mut i = 0;
+            let mut i = 0u32;
             while lhs >= rhs_times_basis {
                 lhs -= &rhs_times_basis;
                 i += 1;
@@ -240,6 +236,8 @@ pub mod div {
     }
 }
 pub mod gcd {
+    use signed::BigInt;
+
     use super::*;
 
     struct GCDHelper<D: Digit> {
@@ -436,7 +434,7 @@ mod tests {
     use super::*;
     mod t_mul {
         use super::*;
-
+        use unsigned::BigInt;
         #[test]
         fn both_big_naive() {
             assert_eq!(
@@ -453,6 +451,7 @@ mod tests {
     }
     mod t_add {
         use super::*;
+        use unsigned::BigInt;
 
         #[test]
         fn add_smaller() {
@@ -466,7 +465,7 @@ mod tests {
                 0x4b17_e4b1,
                 0xffdd_bcbe,
             ]);
-            add::assign_same_sign(
+            add::assign(
                 &mut lhs,
                 &BigInt::from_iter([
                     0x0000_0000u32,
@@ -495,15 +494,16 @@ mod tests {
 
         #[test]
         fn assign_to_zero() {
-            let mut lhs = BigInt::<u32>::from(0);
-            add::assign_same_sign(&mut lhs, &BigInt::from(1));
-            assert_eq!(lhs, BigInt::from(1));
+            let mut lhs = BigInt::<u32>::from(0u8);
+            add::assign(&mut lhs, &BigInt::from(1u8));
+            assert_eq!(lhs, BigInt::from(1u8));
         }
     }
     mod t_div {
         mod m_schoolbook {
 
             use super::super::super::*;
+            use unsigned::BigInt;
 
             #[test]
             fn rel_same_size() {
@@ -513,7 +513,7 @@ mod tests {
                         BigInt::from(7_015_904_223_016_035_028_600_428_233_219_344_947u128)
                     ),
                     (
-                        BigInt::from(7),
+                        BigInt::from(7u8),
                         BigInt::from(6_290_849_648_139_398_910_340_837_476_093_233_246u128)
                     )
                 );
@@ -531,7 +531,7 @@ mod tests {
                     ),
                     (
                         BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
-                        BigInt::from(0)
+                        BigInt::from(0u8)
                     )
                 );
             }
@@ -540,9 +540,9 @@ mod tests {
                 assert_eq!(
                     div::normalized_schoolbook::<u8>(
                         BigInt::from(0x8765_4321u32),
-                        BigInt::from(0x060d)
+                        BigInt::from(0x060du32)
                     ),
-                    (BigInt::from(0x0016_6065), BigInt::from(0))
+                    (BigInt::from(0x0016_6065u32), BigInt::from(0u8))
                 );
             }
             #[test]
@@ -552,7 +552,7 @@ mod tests {
                         BigInt::from(0x7766_5544_3322_1100u64),
                         BigInt::from(0x1_0000_0000u64)
                     ),
-                    (BigInt::from(0x7766_5544), BigInt::from(0x3322_1100))
+                    (BigInt::from(0x7766_5544u32), BigInt::from(0x3322_1100u32))
                 );
             }
             #[test]
@@ -571,13 +571,14 @@ mod tests {
         }
     }
     mod gcd {
-        use crate::big_int::math_algos::gcd::{BezoutCoefficients, Factors};
-
-        use super::{
-            super::gcd::test_helper::{test_bezout, test_gcd},
-            math_algos::gcd::Gcd,
-            BigInt,
+        use crate::big_int::{
+            math_algos::gcd::{
+                test_helper::{test_bezout, test_gcd},
+                BezoutCoefficients, Factors, Gcd,
+            },
+            signed::BigInt,
         };
+
         #[test]
         fn t_inner_gcd_both_positive() {
             test_gcd::<u32>(240, 46, 2, -9);
