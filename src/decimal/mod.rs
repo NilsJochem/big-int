@@ -1,19 +1,24 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{
-    big_int::{digits::Digit, math_algos::gcd::Gcd, signed::BigInt, signed::SigNum},
+    big_int::{
+        digits::Digit,
+        math_algos::gcd::Gcd,
+        signed::{BigInt, SigNum, Sign},
+        unsigned::BigInt as BigUInt,
+    },
     boo::{Boo, Moo},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimal<D: Digit> {
     numerator: BigInt<D>,
-    denominator: BigInt<D>,
+    denominator: BigUInt<D>,
 }
 
 impl<D: Digit> From<BigInt<D>> for Decimal<D> {
     fn from(value: BigInt<D>) -> Self {
-        Self::new_coprime(value, 1)
+        Self::new_coprime(value, 1u8)
     }
 }
 impl<D: Digit> TryFrom<Decimal<D>> for BigInt<D> {
@@ -29,43 +34,42 @@ impl<D: Digit> TryFrom<Decimal<D>> for BigInt<D> {
 }
 impl<D: Digit> Decimal<D> {
     /// assumes gcd(n, d) == 1
-    fn new_coprime(numerator: impl Into<BigInt<D>>, denominator: impl Into<BigInt<D>>) -> Self {
-        let mut numerator = numerator.into();
-        let mut denominator = denominator.into();
+    fn new_coprime(numerator: impl Into<BigInt<D>>, denominator: impl Into<BigUInt<D>>) -> Self {
+        let numerator = numerator.into();
+        let denominator = denominator.into();
         debug_assert!(!denominator.is_zero());
         debug_assert!(!numerator.is_zero() || denominator.is_one());
-        numerator *= denominator.take_sign();
         Self {
             numerator,
             denominator,
         }
     }
-    pub fn new(numerator: impl Into<BigInt<D>>, denominator: impl Into<BigInt<D>>) -> Option<Self> {
+    pub fn new(
+        numerator: impl Into<BigInt<D>>,
+        denominator: impl Into<BigUInt<D>>,
+    ) -> Option<Self> {
         let denominator = denominator.into();
         if denominator.is_zero() {
             return None;
         }
-        let (_, factors) = Gcd::new(numerator.into(), denominator).factors();
+        let (_, factors) =
+            Gcd::new(numerator.into(), denominator.with_sign(Sign::Positive)).factors();
         Some(Self::new_coprime(factors.a, factors.b))
     }
-    fn extend(&mut self, rhs: &BigInt<D>) {
-        self.numerator *= rhs;
+    fn extend(&mut self, rhs: &BigUInt<D>) {
+        *self.numerator *= rhs;
         self.denominator *= rhs;
     }
     pub const fn signum(&self) -> SigNum {
-        #[allow(clippy::manual_assert)]
-        #[cfg(debug_assertions)]
-        if !self.denominator.signum().is_positive() {
-            panic!("denominator shouldn't be zero or negative")
-        }
         self.numerator.signum()
     }
     pub fn abs_cmp_one(&self) -> std::cmp::Ordering {
-        self.numerator.abs_ord(&self.denominator)
+        (*self.numerator).cmp(&self.denominator)
     }
 
     pub fn div_mod_euclid(self) -> (BigInt<D>, BigInt<D>) {
-        let (q, r) = BigInt::div_mod_euclid(self.numerator, self.denominator);
+        let (q, r) =
+            BigInt::div_mod_euclid(self.numerator, self.denominator.with_sign(Sign::Positive));
         (
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
@@ -73,12 +77,13 @@ impl<D: Digit> Decimal<D> {
     }
 
     pub fn round(self) -> BigInt<D> {
-        let (q, r) = BigInt::div_mod_euclid(self.numerator, &self.denominator);
+        let d = self.denominator.with_sign(Sign::Positive);
+        let (q, r) = BigInt::div_mod_euclid(self.numerator, &d);
         let (q, r) = (
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
         );
-        if r * BigInt::from(2) > self.denominator {
+        if r * BigInt::from(2) > d {
             q + BigInt::from(1)
         } else {
             q
@@ -97,13 +102,13 @@ impl<D: Digit> Decimal<D> {
         }
     }
 
-    pub fn round_to_numerator(self, new: impl Into<BigInt<D>>) -> Option<Self> {
-        let new = new.into();
+    pub fn round_to_numerator(self, new: impl Into<BigUInt<D>>) -> Option<Self> {
+        let new = new.into().with_sign(Sign::Positive);
         Self::new(
             Self::new(&new * self.numerator, self.denominator)
                 .unwrap()
                 .round(),
-            new,
+            new.split_sign().1,
         )
     }
 
@@ -112,11 +117,10 @@ impl<D: Digit> Decimal<D> {
     }
     pub fn recip(&mut self) {
         assert!(!self.numerator.is_zero(), "can't invert 0");
-        std::mem::swap(&mut self.numerator, &mut self.denominator);
-        self.numerator *= self.denominator.take_sign();
+        std::mem::swap(&mut *self.numerator, &mut self.denominator);
     }
 
-    fn split(value: Boo<'_, Self>) -> (Boo<'_, BigInt<D>>, Boo<'_, BigInt<D>>) {
+    fn split(value: Boo<'_, Self>) -> (Boo<'_, BigInt<D>>, Boo<'_, BigUInt<D>>) {
         match value {
             Boo::Owned(value) => (Boo::Owned(value.numerator), Boo::Owned(value.denominator)),
             Boo::Borrowed(value) => (
@@ -202,7 +206,7 @@ impl<D: Digit> Decimal<D> {
                 *borrow_mut = Self::new(
                     BigInt::mul(&borrow_mut.numerator, borrow_numerator)
                         .expect_owned("not mut given"),
-                    BigInt::mul(&borrow_mut.denominator, borrow_denominator)
+                    BigUInt::mul(&borrow_mut.denominator, borrow_denominator)
                         .expect_owned("not mut given"),
                 )
                 .unwrap();
@@ -214,7 +218,8 @@ impl<D: Digit> Decimal<D> {
                 Moo::Owned(
                     Self::new(
                         BigInt::mul(lhs_numerator, rhs_numerator).expect_owned("not mut given"),
-                        BigInt::mul(lhs_denominator, rhs_denominator).expect_owned("not mut given"),
+                        BigUInt::mul(lhs_denominator, rhs_denominator)
+                            .expect_owned("not mut given"),
                     )
                     .unwrap(),
                 )
@@ -285,43 +290,51 @@ mod tests {
 
     #[test]
     fn round() {
-        assert_eq!(Decimal::<u32>::new_coprime(17, 5).round(), BigInt::from(3));
-        assert_eq!(Decimal::<u32>::new_coprime(18, 5).round(), BigInt::from(4));
+        assert_eq!(
+            Decimal::<u32>::new_coprime(17, 5u8).round(),
+            BigInt::from(3)
+        );
+        assert_eq!(
+            Decimal::<u32>::new_coprime(18, 5u8).round(),
+            BigInt::from(4)
+        );
     }
 
     #[test]
     fn round_to_numerator() {
         assert_eq!(
-            Decimal::<u32>::new(29, 69).unwrap().round_to_numerator(100),
-            Decimal::new(42, 100)
+            Decimal::<u32>::new(29, 69u8)
+                .unwrap()
+                .round_to_numerator(100u8),
+            Decimal::new(42, 100u8)
         );
     }
 
     #[test]
     fn add() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(1, 2) + Decimal::new_coprime(1, 4),
-            Decimal::new_coprime(3, 4)
+            Decimal::<u32>::new_coprime(1, 2u8) + Decimal::new_coprime(1, 4u8),
+            Decimal::new_coprime(3, 4u8)
         );
     }
     #[test]
     fn mul() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(2, 3) * Decimal::new_coprime(5, 7),
-            Decimal::new_coprime(10, 21)
+            Decimal::<u32>::new_coprime(2, 3u8) * Decimal::new_coprime(5, 7u8),
+            Decimal::new_coprime(10, 21u8)
         );
     }
     #[test]
     fn div() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(2, 3) / Decimal::new_coprime(5, 7),
-            Decimal::new_coprime(14, 15)
+            Decimal::<u32>::new_coprime(2, 3u8) / Decimal::new_coprime(5, 7u8),
+            Decimal::new_coprime(14, 15u8)
         );
     }
     #[test]
     fn recip() {
-        let mut num = Decimal::<u32>::new_coprime(-2, 3);
+        let mut num = Decimal::<u32>::new_coprime(-2, 3u8);
         num.recip();
-        assert_eq!(num, Decimal::new_coprime(-3, 2));
+        assert_eq!(num, Decimal::new_coprime(-3, 2u8));
     }
 }
