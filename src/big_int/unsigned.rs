@@ -513,7 +513,7 @@ impl<D: Digit> FromStr for BigInt<D> {
         let (radix, rest) = match strip_radix(s) {
             Ok((radix, rest)) => (radix.unwrap_or(10), rest),
             Err(StripRadix::UnkoneRadix(c)) => return Err(FromStrErr::UnkoneRadix(c)),
-            Err(StripRadix::OnlyZero) => return Ok(Self::from(0u8)),
+            Err(StripRadix::OnlyZero) => return Ok(Self::ZERO),
         };
 
         require!(!rest.is_empty(), FromStrErr::Empty);
@@ -651,6 +651,13 @@ impl TieBreaker for TieBigger {
 }
 
 impl<D: Digit> BigInt<D> {
+    pub const ZERO: Self = Self {
+        digits: DigitHolder::new(),
+    };
+    pub const ONE: Self = Self {
+        digits: DigitHolder::from_single(D::ONE),
+    };
+
     // construction
     pub fn with_sign(self, sign: Sign) -> SignedBigInt<D> {
         SignedBigInt {
@@ -886,7 +893,7 @@ impl<D: Digit> BigInt<D> {
         radix: u8,
         map: impl Fn(char) -> Option<u32>,
     ) -> Result<Self, FromStrErr> {
-        let mut num = Self::from(0u8);
+        let mut num = Self::ZERO;
         let mut digits = source
             .chars()
             .enumerate()
@@ -1253,7 +1260,7 @@ impl<D: Digit> BigInt<D> {
         let lhs: Boo<_> = lhs.into();
 
         if pow.signum().is_zero() {
-            return Moo::from_with_value(lhs, Self::from(1u8));
+            return Moo::from_with_value(lhs, Self::ONE);
         }
         if lhs.is_zero() {
             return lhs.into();
@@ -1263,12 +1270,12 @@ impl<D: Digit> BigInt<D> {
             if let Some(pow) =
                 <P as Convert<usize>>::try_into(&pow).and_then(|it| it.checked_mul(l_pow))
             {
-                return Self::shl(Self::from(1u8), pow);
+                return Self::shl(Self::ONE, pow);
             }
         }
 
         let mut out: Moo<Self> = Moo::from(lhs);
-        let mut x = std::mem::replace(&mut *out, Self::from(1u8));
+        let mut x = std::mem::replace(&mut *out, Self::ONE);
 
         for bit in pow.le_digits() {
             if bit {
@@ -1313,14 +1320,14 @@ impl<D: Digit> BigInt<D> {
         if *lhs < *rhs {
             let (a, lhs) = lhs.take_keep_ref();
             return (
-                Moo::from_with_value(lhs, Self::from(0u8)),
+                Moo::from_with_value(lhs, Self::ZERO),
                 Moo::from_with_value(rhs, a),
             );
         }
         if *lhs == *rhs {
             return (
-                Moo::from_with_value(lhs, Self::from(1u8)),
-                Moo::from_with_value(rhs, Self::from(0u8)),
+                Moo::from_with_value(lhs, Self::ONE),
+                Moo::from_with_value(rhs, Self::ZERO),
             );
         }
         if rhs.is_power_of_two() {

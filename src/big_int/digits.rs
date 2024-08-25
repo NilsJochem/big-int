@@ -46,6 +46,8 @@ where
     const BYTES: usize;
     const BASIS_POW: usize = (Self::BYTES * 8);
     const MAX: Self;
+    const ZERO: Self;
+    const ONE: Self;
     type Wide: Wide<Self>;
 
     fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self>;
@@ -208,6 +210,8 @@ macro_rules! implDigit {
         impl Digit for $digit {
             const BYTES: usize = Self::BITS as usize / 8;
             const MAX: Self = Self::MAX;
+            const ZERO: Self = 0;
+            const ONE: Self = 1;
             type Wide = $wide;
 
             fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self> {
@@ -236,7 +240,6 @@ macro_rules! implDigit {
             fn get_bit(&self, i: usize) -> bool {
                 (self & 1 << i) != 0
             }
-
             fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
                 u8::try_from(*self).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
             }
@@ -475,6 +478,8 @@ impl CombineTo<usize> for HalfSize {
 impl Digit for HalfSize {
     const BYTES: usize = HalfSizeNative::BITS as usize / 8;
     const MAX: Self = Self(HalfSizeNative::MAX);
+    const ZERO: Self = Self(0);
+    const ONE: Self = Self(1);
     type Wide = usize;
     fn from_le(bytes: impl Iterator<Item = u8>) -> Vec<Self> {
         let chunks = bytes.chunks(Self::BYTES);
@@ -501,7 +506,6 @@ impl Digit for HalfSize {
     fn get_bit(&self, i: usize) -> bool {
         (self.0 & 1 << i) != 0
     }
-
     fn cmp_u8(&self, other: u8) -> std::cmp::Ordering {
         u8::try_from(self.0).map_or(std::cmp::Ordering::Greater, |it| it.cmp(&other))
     }

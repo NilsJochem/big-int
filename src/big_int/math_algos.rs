@@ -158,13 +158,13 @@ pub mod div {
         );
 
         if m < n {
-            return (BigInt::from(0u8), lhs);
+            return (BigInt::ZERO, lhs);
         }
         if m == n {
             return if lhs < rhs {
-                (BigInt::from(0u8), lhs)
+                (BigInt::ZERO, lhs)
             } else {
-                (BigInt::from(1u8), lhs - rhs)
+                (BigInt::ONE, lhs - rhs)
             };
         }
         if m == n + 1 {
@@ -197,8 +197,8 @@ pub mod div {
         );
 
         match lhs.cmp(rhs) {
-            std::cmp::Ordering::Less => return (BigInt::from(0u8), lhs.clone()),
-            std::cmp::Ordering::Equal => return (BigInt::from(1u8), BigInt::from(0u8)),
+            std::cmp::Ordering::Less => return (BigInt::ZERO, lhs.clone()),
+            std::cmp::Ordering::Equal => return (BigInt::ONE, BigInt::ZERO),
             std::cmp::Ordering::Greater => {}
         }
         {
@@ -253,11 +253,11 @@ pub mod gcd {
 
         let mut old = GCDHelper {
             r: a,
-            s: BigInt::from(1),
+            s: BigInt::ONE,
         };
         let mut new = GCDHelper {
             r: b,
-            s: BigInt::from(0),
+            s: BigInt::ZERO,
         };
 
         while !new.r.is_zero() {
@@ -312,7 +312,7 @@ pub mod gcd {
             } else {
                 BezoutCoefficients {
                     x: gcd.clone(), // to not get a 1 when gcd(0,0)
-                    y: BigInt::from(0),
+                    y: BigInt::ZERO,
                 }
             }
         }
@@ -500,8 +500,8 @@ mod tests {
         #[test]
         fn assign_to_zero() {
             let mut lhs = BigInt::<u32>::from(0);
-            add::assign(&mut lhs, &BigInt::from(1));
-            assert_eq!(lhs, BigInt::from(1));
+            add::assign(&mut lhs, &BigInt::ONE);
+            assert_eq!(lhs, BigInt::ONE);
         }
     }
     mod t_div {

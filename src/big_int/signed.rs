@@ -5,7 +5,7 @@ use crate::big_int::{
     unsigned::BigInt as BigUInt,
 };
 
-use itertools::{Either, Itertools};
+use itertools::Either;
 use std::{
     fmt::{Debug, Write},
     ops::{
@@ -276,6 +276,18 @@ impl<D: Digit> DerefMut for BigInt<D> {
 }
 
 impl<D: Digit> BigInt<D> {
+    pub const ZERO: Self = Self {
+        signum: SigNum::Zero,
+        unsigned: BigUInt::ZERO,
+    };
+    pub const ONE: Self = Self {
+        signum: SigNum::Positive,
+        unsigned: BigUInt::ONE,
+    };
+    pub const NEG_ONE: Self = Self {
+        signum: SigNum::Negative,
+        unsigned: BigUInt::ONE,
+    };
     pub fn from_digit(value: D) -> Self {
         BigUInt::from_digit(value).with_sign(Sign::Positive)
     }
@@ -560,7 +572,7 @@ impl<D: Digit> BigInt<D> {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
         if rhs == SigNum::Zero {
-            *lhs = Self::from(0);
+            *lhs = Self::ZERO;
         } else {
             lhs.signum *= rhs;
         }

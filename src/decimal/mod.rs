@@ -84,7 +84,7 @@ impl<D: Digit> Decimal<D> {
             r.expect_owned("no mut given"),
         );
         if r * D::from(2u8) > d {
-            q + BigInt::from(1)
+            q + BigInt::ONE
         } else {
             q
         }
@@ -98,7 +98,7 @@ impl<D: Digit> Decimal<D> {
         if r.is_zero() {
             q
         } else {
-            q + BigInt::from(1)
+            q + BigInt::ONE
         }
     }
 
