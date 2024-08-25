@@ -298,6 +298,18 @@ impl<D: Digit> BigInt<D> {
         (self.signum, self.unsigned)
     }
 
+    /// generate a new random number with at least `bytes.start()` and at most `bytes.end()` bytes of information
+    /// # Example
+    /// `0x00_0100` <= `BigInt::new_random(2..=3, _)` <= `0xff_ffff`,
+    pub fn new_random(bytes: std::ops::RangeInclusive<usize>, mut rng: impl rand::RngCore) -> Self {
+        let sign = if rng.next_u32() % 2 == 0 {
+            Sign::Positive
+        } else {
+            Sign::Negative
+        };
+        BigUInt::new_random(bytes, rng).with_sign(sign)
+    }
+
     fn recalc_sign(&mut self) {
         if self.digits.is_empty() {
             self.signum = SigNum::Zero;
