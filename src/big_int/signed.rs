@@ -434,47 +434,6 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    // fn shl<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
-    // where
-    //     B1: Into<Boo<'b1, Self>>,
-    //     B2: Into<Boo<'b2, usize>>,
-    // {
-    //     match lhs.into() {
-    //         Boo::BorrowedMut(lhs) => {
-    //             let _ = BigUInt::shl(&mut lhs.unsigned, rhs);
-    //             Moo::BorrowedMut(lhs)
-    //         }
-    //         lhs => {
-    //             let sign = lhs.signum();
-    //             Moo::Owned(
-    //                 BigUInt::shl(Self::abs_boo(lhs), rhs)
-    //                     .expect_owned("no mut ref")
-    //                     .with_sign(sign.into()),
-    //             )
-    //         }
-    //     }
-    // }
-    // fn shr<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
-    // where
-    //     B1: Into<Boo<'b1, Self>>,
-    //     B2: Into<Boo<'b2, usize>>,
-    // {
-    //     match lhs.into() {
-    //         Boo::BorrowedMut(lhs) => {
-    //             let _ = BigUInt::shr(&mut lhs.unsigned, rhs);
-    //             Moo::BorrowedMut(lhs)
-    //         }
-    //         lhs => {
-    //             let sign = lhs.signum();
-    //             Moo::Owned(
-    //                 BigUInt::shr(Self::abs_boo(lhs), rhs)
-    //                     .expect_owned("no mut ref")
-    //                     .with_sign(sign.into()),
-    //             )
-    //         }
-    //     }
-    // }
-
     pub(crate) fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
