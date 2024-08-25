@@ -418,6 +418,12 @@ impl<D: Digit> BigInt<D> {
             Boo::BorrowedMut(value) => Boo::BorrowedMut(&mut value.unsigned),
         }
     }
+    fn abs_moo(value: Moo<'_, Self>) -> Moo<'_, BigUInt<D>> {
+        match value {
+            Moo::Owned(value) => Moo::Owned(value.unsigned),
+            Moo::BorrowedMut(value) => Moo::BorrowedMut(&mut value.unsigned),
+        }
+    }
     pub(super) fn refer_to_abs<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
@@ -653,7 +659,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    pub(crate) fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn div_euclid<'b1, 'b2: 'b1, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -670,7 +676,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
     #[allow(dead_code)]
-    pub(crate) fn rem_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub(crate) fn rem_euclid<'b2, 'b1: 'b2, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, BigUInt<D>>
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -681,7 +687,7 @@ impl<D: Digit> BigInt<D> {
         match (lhs, rhs) {
             (Boo::BorrowedMut(lhs), rhs) => {
                 let (_, result) = Self::div_mod_euclid(std::mem::take(lhs), rhs);
-                Moo::from_with_value(lhs, result.expect_owned("did'nt hat mut ref"))
+                Moo::from_with_value(&mut lhs.unsigned, result.expect_owned("did'nt hat mut ref"))
             }
             (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).1,
         }
@@ -689,7 +695,7 @@ impl<D: Digit> BigInt<D> {
     pub fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
-    ) -> (Moo<'b1, Self>, Moo<'b2, Self>)
+    ) -> (Moo<'b1, Self>, Moo<'b2, BigUInt<D>>)
     where
         B1: Into<Boo<'b1, Self>>,
         B2: Into<Boo<'b2, Self>>,
@@ -701,41 +707,6 @@ impl<D: Digit> BigInt<D> {
         let (n, d) = ((*lhs).clone(), (*rhs).clone());
 
         let map_r = lhs.is_negative().then(|| rhs.abs_clone());
-        let signum_q = lhs.signum() * rhs.signum();
-
-        let (mut q, mut r) = Self::div_mod(lhs, rhs);
-
-        if let Some(d) = map_r.filter(|_| !r.is_zero()) {
-            *q += Self::from(1) * signum_q;
-            *r = d - &*r;
-        }
-
-        debug_assert!(
-            !r.is_negative() && r.abs_ord(&d).is_lt(),
-            "0 <= r < |d| failed for \nr: {}, d: {d}",
-            *r
-        );
-        debug_assert_eq!(
-            n,
-            &d * &*q + &*r,
-            "n = dq + r failed for \nn: {n}, d: {d}\nq: {}, r: {}",
-            *q,
-            *r
-        );
-        (q, r)
-    }
-    pub fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
-        lhs: B1,
-        rhs: B2,
-    ) -> (Moo<'b1, Self>, Moo<'b2, Self>)
-    where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
-    {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
-        // here both can be allowed to be &muts in which case *lhs = lhs/rhs, *rhs = lhs%rhs
-        // Self::assert_pair_valid(&lhs, &rhs);
         let signum_q = lhs.signum() * rhs.signum();
 
         let (mut q, mut r) = match (lhs, rhs) {
@@ -774,50 +745,68 @@ impl<D: Digit> BigInt<D> {
         q.recalc_sign();
         r.recalc_sign();
         *q *= signum_q;
-        (q, r)
+
+        if let Some(d) = map_r.filter(|_| !r.is_zero()) {
+            *q += Self::from(1) * signum_q;
+            *r = d - &*r;
+        }
+
+        debug_assert!(
+            !r.is_negative() && r.abs_ord(&d).is_lt(),
+            "0 <= r < |d| failed for \nr: {}, d: {d}",
+            *r
+        );
+        debug_assert_eq!(
+            n,
+            &d * &*q + &*r,
+            "n = dq + r failed for \nn: {n}, d: {d}\nq: {}, r: {}",
+            *q,
+            *r
+        );
+        (q, Self::abs_moo(r))
     }
 }
 
 macro_rules! implBigMath {
-($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident) => {
-    implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigInt<D>);
-};
-($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident, $ref_func:ident, $rhs: ident$(<$gen:ident>)?) => {
-    impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
-        implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
-    }
-    impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
-        implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
-    }
-    impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for &BigInt<D> {
-        implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
-    }
-    impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for &BigInt<D> {
-        implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
-    }
-    impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
-        fn $assign_func(&mut self, rhs: $rhs$(<$gen>)?) {
-            BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+    ($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident) => {
+        implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigInt<D>);
+    };
+    ($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident, $ref_func:ident, $rhs:ident$(<$gen:ident>)?) => {
+        impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+            implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
         }
-    }
-    impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
-        fn $assign_func(&mut self, rhs: &$rhs$(<$gen>)?) {
-            BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+        impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+            implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
         }
-    }
-};
-(body $func:tt, $ref_func:ident, $rhs:ident$(<$gen:ident>)?) => {
-    type Output = BigInt<D>;
-    fn $func(self, rhs: $rhs$(<$gen>)?) -> Self::Output {
-        BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
-    }
-};
-(body $func:tt, $ref_func:ident, &$rhs:ident$(<$gen:ident>)?) => {
-    type Output = BigInt<D>;
-    fn $func(self, rhs: &$rhs$(<$gen>)?) -> Self::Output {
-        BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
-    }
-};
+        impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for &BigInt<D> {
+            implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
+        }
+        impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for &BigInt<D> {
+            implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
+        }
+        impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+            fn $assign_func(&mut self, rhs: $rhs$(<$gen>)?) {
+                BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+            }
+        }
+        impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+            fn $assign_func(&mut self, rhs: &$rhs$(<$gen>)?) {
+                BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+            }
+        }
+    };
+    (body $func:tt, $ref_func:ident, $rhs:ident$(<$gen:ident>)?) => {
+        type Output = BigInt<D>;
+        fn $func(self, rhs: $rhs$(<$gen>)?) -> Self::Output {
+            BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
+        }
+    };
+    (body $func:tt, $ref_func:ident, &$rhs:ident$(<$gen:ident>)?) => {
+        type Output = BigInt<D>;
+        fn $func(self, rhs: &$rhs$(<$gen>)?) -> Self::Output {
+            BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
+        }
+    };
 }
 
 // no `std::ops::Not`, cause implied zeros to the left would need to be flipped
@@ -839,6 +828,42 @@ implBigMath!(AddAssign, add_assign, Add, add);
 implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
 implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigInt<D>);
-implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
 
 implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_sign, SigNum);
+
+// manual impl of rem because of the always positive output
+// implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
+impl<D: Digit> Rem for BigInt<D> {
+    type Output = BigUInt<D>;
+    fn rem(self, rhs: Self) -> Self::Output {
+        Self::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+    }
+}
+impl<D: Digit> Rem<&Self> for BigInt<D> {
+    type Output = BigUInt<D>;
+    fn rem(self, rhs: &Self) -> Self::Output {
+        Self::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+    }
+}
+impl<D: Digit> Rem<BigInt<D>> for &BigInt<D> {
+    type Output = BigUInt<D>;
+    fn rem(self, rhs: BigInt<D>) -> Self::Output {
+        BigInt::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+    }
+}
+impl<D: Digit> Rem for &BigInt<D> {
+    type Output = BigUInt<D>;
+    fn rem(self, rhs: &BigInt<D>) -> Self::Output {
+        BigInt::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+    }
+}
+impl<D: Digit> RemAssign<Self> for BigInt<D> {
+    fn rem_assign(&mut self, rhs: Self) {
+        Self::rem_euclid(self, rhs).expect_mut("did give &mut, shouldn't get result");
+    }
+}
+impl<D: Digit> RemAssign<&Self> for BigInt<D> {
+    fn rem_assign(&mut self, rhs: &Self) {
+        Self::rem_euclid(self, rhs).expect_mut("did give &mut, shouldn't get result");
+    }
+}

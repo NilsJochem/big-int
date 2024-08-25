@@ -813,7 +813,7 @@ pub(super) mod big_math {
             BigInt::<u8>::div_mod_euclid(BigInt::from_digit(10), BigInt::from_digit(10)),
             (
                 Moo::Owned(BigInt::from_digit(1)),
-                Moo::Owned(BigInt::from_digit(0))
+                Moo::Owned(BigUInt::from_digit(0))
             )
         );
     }
@@ -824,7 +824,7 @@ pub(super) mod big_math {
             BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from_digit(4)),
             (
                 Moo::Owned(BigInt::from_digit(1)),
-                Moo::Owned(BigInt::from_digit(3))
+                Moo::Owned(BigUInt::from_digit(3))
             ),
             "no negative"
         );
@@ -832,7 +832,7 @@ pub(super) mod big_math {
             BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from(-4)),
             (
                 Moo::Owned(BigInt::from(-1)),
-                Moo::Owned(BigInt::from_digit(3))
+                Moo::Owned(BigUInt::from_digit(3))
             ),
             "rhs negative"
         );
@@ -840,7 +840,7 @@ pub(super) mod big_math {
             BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(4)),
             (
                 Moo::Owned(BigInt::from(-2)),
-                Moo::Owned(BigInt::from_digit(1))
+                Moo::Owned(BigUInt::from_digit(1))
             ),
             "lhs negative"
         );
@@ -848,7 +848,7 @@ pub(super) mod big_math {
             BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(-4)),
             (
                 Moo::Owned(BigInt::from(2)),
-                Moo::Owned(BigInt::from_digit(1))
+                Moo::Owned(BigUInt::from_digit(1))
             ),
             "both negative"
         );

@@ -67,7 +67,7 @@ impl<D: Digit> Decimal<D> {
         (*self.numerator).cmp(&self.denominator)
     }
 
-    pub fn div_mod_euclid(self) -> (BigInt<D>, BigInt<D>) {
+    pub fn div_mod_euclid(self) -> (BigInt<D>, BigUInt<D>) {
         let (q, r) =
             BigInt::div_mod_euclid(self.numerator, self.denominator.with_sign(Sign::Positive));
         (
@@ -83,7 +83,7 @@ impl<D: Digit> Decimal<D> {
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
         );
-        if r * BigInt::from(2) > d {
+        if r * D::from(2u8) > d {
             q + BigInt::from(1)
         } else {
             q

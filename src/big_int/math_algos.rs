@@ -261,7 +261,9 @@ pub mod gcd {
             let (qoutient, remainder) = BigInt::div_mod_euclid(old.r, &new.r);
 
             let next = GCDHelper {
-                r: remainder.expect_owned("no mut ref was given"),
+                r: remainder
+                    .expect_owned("no mut ref was given")
+                    .with_sign(signed::Sign::Positive),
                 s: old.s - qoutient.expect_owned("no mut ref was given") * &new.s,
             };
 
