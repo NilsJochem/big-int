@@ -518,7 +518,7 @@ mod tests {
                         BigInt::from(7_015_904_223_016_035_028_600_428_233_219_344_947u128)
                     ),
                     (
-                        BigInt::from(7),
+                        BigInt::from_digit(7),
                         BigInt::from(6_290_849_648_139_398_910_340_837_476_093_233_246u128)
                     )
                 );
@@ -536,7 +536,7 @@ mod tests {
                     ),
                     (
                         BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
-                        BigInt::from(0)
+                        BigInt::from_digit(0)
                     )
                 );
             }
@@ -547,7 +547,7 @@ mod tests {
                         BigInt::from(0x8765_4321u32),
                         BigInt::from(0x060du32)
                     ),
-                    (BigInt::from(0x0016_6065u32), BigInt::from(0))
+                    (BigInt::from(0x0016_6065u32), BigInt::from_digit(0))
                 );
             }
             #[test]
@@ -557,7 +557,7 @@ mod tests {
                         BigInt::from(0x7766_5544_3322_1100u64),
                         BigInt::from(0x1_0000_0000u64)
                     ),
-                    (BigInt::from(0x7766_5544u32), BigInt::from(0x3322_1100u32))
+                    (BigInt::from_digit(0x7766_5544u32), BigInt::from_digit(0x3322_1100u32))
                 );
             }
             #[test]
@@ -633,55 +633,55 @@ mod tests {
             assert_eq!(
                 bezout,
                 BezoutCoefficients {
-                    x: BigInt::from_digit(0),
-                    y: BigInt::from_digit(1)
+                    x: BigInt::ZERO,
+                    y: BigInt::ONE
                 }
             );
             assert_eq!(
                 factor,
                 Factors {
-                    b: BigInt::from_digit(1),
-                    a: BigInt::from_digit(0)
+                    b: BigInt::ONE,
+                    a: BigInt::ZERO
                 }
             );
         }
         #[test]
         fn rhs_zero() {
             let (gcd, bezout, factor) =
-                Gcd::new(BigInt::<u32>::from_digit(1), BigInt::from_digit(0)).all();
-            assert_eq!(gcd, BigInt::from_digit(1));
+                Gcd::new(BigInt::<u32>::ONE, BigInt::ZERO).all();
+            assert_eq!(gcd, BigInt::ONE);
             assert_eq!(
                 bezout,
                 BezoutCoefficients {
-                    x: BigInt::from_digit(1),
-                    y: BigInt::from_digit(0)
+                    x: BigInt::ONE,
+                    y: BigInt::ZERO
                 }
             );
             assert_eq!(
                 factor,
                 Factors {
-                    b: BigInt::from_digit(0),
-                    a: BigInt::from_digit(1)
+                    b: BigInt::ZERO,
+                    a: BigInt::ONE
                 }
             );
         }
         #[test]
         fn both_zero() {
             let (gcd, bezout, factor) =
-                Gcd::new(BigInt::<u32>::from_digit(0), BigInt::from_digit(0)).all();
-            assert_eq!(gcd, BigInt::from_digit(0));
+                Gcd::new(BigInt::<u32>::ZERO, BigInt::ZERO).all();
+            assert_eq!(gcd, BigInt::ZERO);
             assert_eq!(
                 bezout,
                 BezoutCoefficients {
-                    x: BigInt::from_digit(0),
-                    y: BigInt::from_digit(0)
+                    x: BigInt::ZERO,
+                    y: BigInt::ZERO
                 }
             );
             assert_eq!(
                 factor,
                 Factors {
-                    b: BigInt::from_digit(0),
-                    a: BigInt::from_digit(0)
+                    b: BigInt::ZERO,
+                    a: BigInt::ZERO
                 }
             );
         }

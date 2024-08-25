@@ -951,7 +951,7 @@ impl<D: Digit> BigInt<D> {
                 match map(digit) {
                     Some(digit) => {
                         num *= D::from(radix);
-                        num += Self::from(digit as u8);
+                        num += Self::from_digit(D::from(digit as u8));
                     }
                     None => return Err(FromStrErr::UnkownDigit { digit, position: i }),
                 }

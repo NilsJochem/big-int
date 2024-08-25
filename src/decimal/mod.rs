@@ -290,8 +290,14 @@ mod tests {
 
     #[test]
     fn round() {
-        assert_eq!(Decimal::<u32>::new_coprime(17, 5).round(), BigInt::from(3));
-        assert_eq!(Decimal::<u32>::new_coprime(18, 5).round(), BigInt::from(4));
+        assert_eq!(
+            Decimal::<u32>::new_coprime(17, 5).round(),
+            BigInt::from_digit(3)
+        );
+        assert_eq!(
+            Decimal::<u32>::new_coprime(18, 5).round(),
+            BigInt::from_digit(4)
+        );
     }
 
     #[test]

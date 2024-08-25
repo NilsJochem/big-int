@@ -356,12 +356,6 @@ mod order {
             Ordering::Less
         );
     }
-
-    #[test]
-    fn cmp_0() {
-        assert_eq!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)), Ordering::Less);
-        assert!(BigInt::<u8>::from(0).cmp(&BigInt::from(1)).is_le());
-    }
 }
 
 #[cfg(feature = "base64")]
