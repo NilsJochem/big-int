@@ -39,7 +39,7 @@ mod create {
             BigInt {
                 signum: SigNum::Positive,
                 unsigned: BigUInt {
-                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988].into()
                 }
             }
         );
@@ -51,7 +51,7 @@ mod create {
             BigInt {
                 signum: SigNum::Negative,
                 unsigned: BigUInt {
-                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988]
+                    digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988].into()
                 }
             }
         );
@@ -222,21 +222,21 @@ mod output {
 
         #[test]
         fn l_align() {
-            assert_eq!(format!("{:<#10}", BigInt::<u8>::from(0)), "0_000_000_000");
+            assert_eq!(format!("{:0<#10}", BigInt::<u8>::from(0)), "0_000_000_000");
             assert_eq!(
-                format!("{:<10}", BigInt::<u8>::from(12_345i64)),
+                format!("{:0<10}", BigInt::<u8>::from(12_345i64)),
                 "0000012345"
             );
             assert_eq!(
-                format!("{:<10}", BigInt::<u8>::from(-12_345i64)),
+                format!("{:0<10}", BigInt::<u8>::from(-12_345i64)),
                 "-000012345"
             );
             assert_eq!(
-                format!("{:<#10}", BigInt::<u8>::from(12_345i64)),
+                format!("{:0<#10}", BigInt::<u8>::from(12_345i64)),
                 "0_000_012_345"
             );
             assert_eq!(
-                format!("{:<#10}", BigInt::<u8>::from(-12_345i64)),
+                format!("{:0<#10}", BigInt::<u8>::from(-12_345i64)),
                 "-000_012_345"
             );
         }

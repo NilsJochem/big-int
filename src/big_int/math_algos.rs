@@ -20,11 +20,13 @@ pub mod bit_math {
 
     pub fn bit_or_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         op_assign_zipped(lhs, rhs, std::ops::BitOrAssign::bitor_assign);
-        lhs.digits.extend(rhs.digits.iter().skip(lhs.digits.len()));
+        lhs.digits
+            .extend(rhs.digits.iter().copied().dropping(lhs.digits.len()));
     }
     pub fn bit_xor_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
         op_assign_zipped(lhs, rhs, std::ops::BitXorAssign::bitxor_assign);
-        lhs.digits.extend(rhs.digits.iter().skip(lhs.digits.len()));
+        lhs.digits
+            .extend(rhs.digits.iter().copied().dropping(lhs.digits.len()));
         lhs.truncate_leading_zeros();
     }
     pub fn bit_and_assign<D: Digit>(lhs: &mut BigInt<D>, rhs: &BigInt<D>) {
@@ -41,7 +43,8 @@ pub mod add {
     /// prefers lhs to be the longer number
     pub fn assign<D: Digit>(lhs: &mut unsigned::BigInt<D>, rhs: &unsigned::BigInt<D>) {
         let orig_lhs_len = lhs.digits.len();
-        lhs.digits.extend(rhs.digits.iter().skip(orig_lhs_len));
+        lhs.digits
+            .extend(rhs.digits.iter().copied().dropping(orig_lhs_len));
 
         let mut carry = false;
         for elem in lhs

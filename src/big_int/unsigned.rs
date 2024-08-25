@@ -20,11 +20,337 @@ use std::{
     },
     str::FromStr,
 };
+pub(super) mod digit_holder {
+    use itertools::Itertools;
+    use std::{
+        fmt::Debug,
+        ops::{Index, IndexMut},
+    };
 
+    #[derive(Clone)]
+    pub enum DigitHolder<D> {
+        None,
+        One(D),
+        Other(Vec<D>),
+    }
+    impl<D> Default for DigitHolder<D> {
+        fn default() -> Self {
+            Self::None
+        }
+    }
+    impl<D: Debug> Debug for DigitHolder<D> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::None => f.debug_list().finish(),
+                Self::One(arg0) => f.debug_list().entries(std::iter::once(arg0)).finish(),
+                Self::Other(arg0) => Debug::fmt(arg0, f),
+            }
+        }
+    }
+
+    impl<D> From<Vec<D>> for DigitHolder<D> {
+        fn from(mut values: Vec<D>) -> Self {
+            match values.len() {
+                0 => Self::new(),
+                1 => Self::from_single(values.pop().unwrap_or_else(|| unreachable!())),
+                _ => Self::Other(values),
+            }
+        }
+    }
+    impl<D> From<D> for DigitHolder<D> {
+        fn from(value: D) -> Self {
+            Self::One(value)
+        }
+    }
+    impl<D> FromIterator<D> for DigitHolder<D> {
+        fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
+            Self::from_vec(iter.into_iter().collect_vec())
+        }
+    }
+
+    impl<D> From<DigitHolder<D>> for Vec<D> {
+        fn from(value: DigitHolder<D>) -> Self {
+            match value {
+                DigitHolder::None => vec![],
+                DigitHolder::One(digit) => vec![digit],
+                DigitHolder::Other(digits) => digits,
+            }
+        }
+    }
+
+    impl<D> DigitHolder<D> {
+        pub const fn new() -> Self {
+            Self::None
+        }
+        pub const fn from_single(value: D) -> Self {
+            Self::One(value)
+        }
+        pub fn from_vec(values: Vec<D>) -> Self {
+            values.into()
+        }
+        pub fn len(&self) -> usize {
+            match self {
+                Self::None => 0,
+                Self::One(_) => 1,
+                Self::Other(digits) => {
+                    debug_assert!(
+                        digits.len() > 1,
+                        "vec remained with 1 < {} elements",
+                        digits.len()
+                    );
+                    digits.len()
+                }
+            }
+        }
+        pub const fn is_empty(&self) -> bool {
+            matches!(self, Self::None)
+        }
+        pub fn is_in_bounds(&self, index: usize) -> bool {
+            self.len() > index
+        }
+        pub fn assert_bounds(&self, index: usize) {
+            assert!(
+                self.is_in_bounds(index),
+                "tried to access element {index} with len: {}",
+                self.len()
+            );
+        }
+        pub fn get(&self, index: usize) -> Option<&D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit).filter(|_| index == 0),
+                Self::Other(digits) => digits.get(index),
+            }
+        }
+        pub fn get_mut(&mut self, index: usize) -> Option<&mut D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit).filter(|_| index == 0),
+                Self::Other(digits) => digits.get_mut(index),
+            }
+        }
+
+        pub fn first(&self) -> Option<&D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit),
+                Self::Other(digits) => digits.first(),
+            }
+        }
+        pub fn first_mut(&mut self) -> Option<&mut D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit),
+                Self::Other(digits) => digits.first_mut(),
+            }
+        }
+        pub fn last(&self) -> Option<&D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit),
+                Self::Other(digits) => digits.last(),
+            }
+        }
+        pub fn last_mut(&mut self) -> Option<&mut D> {
+            match self {
+                Self::None => None,
+                Self::One(digit) => Some(digit),
+                Self::Other(digits) => digits.last_mut(),
+            }
+        }
+        pub fn as_ptr(&self) -> *const D {
+            match self {
+                Self::None => [].as_slice().as_ptr(),
+                Self::One(digit) => std::ptr::from_ref(digit),
+                Self::Other(digits) => digits.as_ptr(),
+            }
+        }
+
+        pub fn push(&mut self, value: D)
+        where
+            D: Copy,
+        {
+            match self {
+                Self::None => {
+                    *self = Self::from_single(value);
+                }
+                Self::One(digit) => {
+                    *self = Self::from_vec(vec![*digit, value]);
+                }
+                Self::Other(digits) => digits.push(value),
+            }
+        }
+        pub fn pop(&mut self) -> Option<D> {
+            if self.len() <= 2 {
+                match std::mem::take(self) {
+                    Self::None => unreachable!(),
+                    Self::One(digit) => Some(digit),
+                    Self::Other(mut digits) => {
+                        let out = digits.pop();
+                        debug_assert_eq!(digits.len(), 1);
+                        *self = Self::from_single(digits.pop().unwrap());
+                        out
+                    }
+                }
+            } else {
+                match self {
+                    Self::None | Self::One(_) => unreachable!(),
+                    Self::Other(digits) => digits.pop(),
+                }
+            }
+        }
+        pub fn remove(&mut self, index: usize) -> Option<D> {
+            if !self.is_in_bounds(index) {
+                return None;
+            }
+            if self.len() <= 2 {
+                match std::mem::take(self) {
+                    Self::None => unreachable!(),
+                    Self::One(digit) => {
+                        if index == 0 {
+                            Some(digit)
+                        } else {
+                            *self = Self::from_single(digit);
+                            None
+                        }
+                    }
+                    Self::Other(mut digits) => {
+                        let out = digits.remove(index);
+                        debug_assert_eq!(digits.len(), 1);
+                        *self = Self::from_single(digits.pop().unwrap());
+                        Some(out)
+                    }
+                }
+            } else {
+                match self {
+                    Self::None | Self::One(_) => unreachable!(),
+                    Self::Other(digits) => Some(digits.remove(index)),
+                }
+            }
+        }
+        pub fn reverse(&mut self) {
+            match self {
+                Self::None | Self::One(_) => {}
+                Self::Other(digits) => digits.reverse(),
+            }
+        }
+        pub fn truncate(&mut self, len: usize) {
+            match len {
+                0 => *self = Self::new(),
+                1 => match self {
+                    Self::None | Self::One(_) => {}
+                    Self::Other(digits) => {
+                        digits.truncate(1);
+                        *self = Self::One(digits.pop().unwrap());
+                    }
+                },
+                _ => {
+                    match self {
+                        Self::None | Self::One(_) => {}
+                        Self::Other(digits) => digits.truncate(len),
+                    };
+                }
+            }
+        }
+
+        pub fn iter(&self) -> impl ExactSizeIterator<Item = &D> + DoubleEndedIterator {
+            self.as_slice().iter()
+        }
+        pub fn as_slice(&self) -> &[D] {
+            match self {
+                Self::None => [].as_slice(),
+                Self::One(digit) => std::slice::from_ref(digit),
+                Self::Other(digits) => digits.as_slice(),
+            }
+        }
+        pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut D> + DoubleEndedIterator {
+            self.as_mut_slice().iter_mut()
+        }
+        pub fn as_mut_slice(&mut self) -> &mut [D] {
+            match self {
+                Self::None => [].as_mut_slice(),
+                Self::One(digit) => std::slice::from_mut(digit),
+                Self::Other(digits) => digits.as_mut_slice(),
+            }
+        }
+    }
+    impl<D> Index<usize> for DigitHolder<D> {
+        type Output = D;
+
+        fn index(&self, index: usize) -> &Self::Output {
+            self.assert_bounds(index);
+            self.get(index).unwrap()
+        }
+    }
+    impl<D> IndexMut<usize> for DigitHolder<D> {
+        fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+            self.get_mut(index).unwrap()
+        }
+    }
+    pub enum DigitIter<D> {
+        None,
+        One(std::iter::Once<D>),
+        Other(<Vec<D> as IntoIterator>::IntoIter),
+    }
+    impl<D> Iterator for DigitIter<D> {
+        type Item = D;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            match self {
+                Self::None => None,
+                Self::One(iter) => iter.next(),
+                Self::Other(iter) => iter.next(),
+            }
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            match self {
+                Self::None => (0, Some(0)),
+                Self::One(iter) => iter.size_hint(),
+                Self::Other(iter) => iter.size_hint(),
+            }
+        }
+    }
+    impl<D> ExactSizeIterator for DigitIter<D> {}
+    impl<D> DoubleEndedIterator for DigitIter<D> {
+        fn next_back(&mut self) -> Option<Self::Item> {
+            match self {
+                Self::None => None,
+                Self::One(iter) => iter.next_back(),
+                Self::Other(iter) => iter.next_back(),
+            }
+        }
+    }
+
+    impl<D> IntoIterator for DigitHolder<D> {
+        type Item = D;
+        type IntoIter = DigitIter<D>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            match self {
+                Self::None => DigitIter::None,
+                Self::One(digit) => DigitIter::One(std::iter::once(digit)),
+                Self::Other(digits) => DigitIter::Other(digits.into_iter()),
+            }
+        }
+    }
+    impl<D: Copy> Extend<D> for DigitHolder<D> {
+        fn extend<T: IntoIterator<Item = D>>(&mut self, iter: T) {
+            match self {
+                Self::None => *self = Self::from_vec(iter.into_iter().collect_vec()),
+                Self::One(digit) => {
+                    // TODO move self
+                    *self = Self::from_vec(std::iter::once(*digit).chain(iter).collect_vec());
+                }
+                Self::Other(digits) => digits.extend(iter),
+            }
+        }
+    }
+}
+use digit_holder::DigitHolder;
 #[derive(Clone, Default)]
 pub struct BigInt<D> {
     /// holds the digits in LE order
-    pub(super) digits: Vec<D>,
+    pub(super) digits: DigitHolder<D>,
 }
 
 impl<D: Digit> std::fmt::Debug for BigInt<D> {
@@ -349,16 +675,18 @@ impl<D: Digit> BigInt<D> {
     }
     pub fn from_digit(value: D) -> Self {
         if value.eq_u8(0) {
-            Self { digits: vec![] }
+            Self {
+                digits: DigitHolder::new(),
+            }
         } else {
             Self {
-                digits: vec![value],
+                digits: DigitHolder::from_single(value),
             }
         }
     }
     pub fn from_digits(iter: impl IntoIterator<Item = D>) -> Self {
         let mut num = Self {
-            digits: iter.into_iter().collect_vec(),
+            digits: iter.into_iter().collect(),
         };
         num.truncate_leading_zeros();
         num
@@ -392,11 +720,11 @@ impl<D: Digit> BigInt<D> {
         write!(f, "]")
     }
     // getter
-    pub fn is_zero(&self) -> bool {
+    pub const fn is_zero(&self) -> bool {
         self.digits.is_empty()
     }
     pub fn is_one(&self) -> bool {
-        self.digits.len() == 1 && self.digits[0].eq_u8(1)
+        self.digits.len() == 1 && self.digits.first().unwrap().eq_u8(1)
     }
     pub fn is_even(&self) -> bool {
         self.digits.last().map_or(true, D::is_even)
@@ -663,7 +991,7 @@ impl<D: Digit> BigInt<D> {
 
         let mut carry = D::default();
         if partial > 0 {
-            for digit in &mut lhs.digits {
+            for digit in lhs.digits.iter_mut() {
                 (*digit, carry) = digit.widening_shl(rhs, carry).split_le();
             }
         }
