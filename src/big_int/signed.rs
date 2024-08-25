@@ -130,13 +130,31 @@ impl<D: Digit> std::fmt::Debug for BigInt<D> {
                 SigNum::Positive => "+",
             }
         )?;
-        self.unsigned.inner_fmt(f)?;
+        self.unsigned.inner_debug(f)?;
         write!(f, "}}")
     }
 }
 impl<D: Digit> std::fmt::Display for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.clone().inner_fmt(f, 10)
+        let has_sign = self.is_negative() || f.sign_plus();
+        assert!(!has_sign || f.width().is_none() || f.fill() != ' ', "todo");
+        if self.is_negative() {
+            f.write_char('-')?;
+        } else if f.sign_plus() {
+            f.write_char('+')?;
+        }
+        self.unsigned.clone().write_with_radix(
+            f,
+            10,
+            f.alternate().then_some((3, '_')),
+            f.width().map(|w| {
+                (
+                    w - has_sign as usize,
+                    f.align().unwrap_or(std::fmt::Alignment::Right),
+                    f.fill(),
+                )
+            }),
+        )
     }
 }
 impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
@@ -311,77 +329,6 @@ impl<D: Digit> BigInt<D> {
         let signum = self.signum;
         self.abs();
         signum
-    }
-
-    pub(super) fn inner_fmt(
-        mut self,
-        f: &mut std::fmt::Formatter,
-        radix: u8,
-    ) -> Result<(), std::fmt::Error> {
-        let radix = Self::from_digit(D::from(radix));
-        let has_sign = self.is_negative() || f.sign_plus();
-        if self.is_negative() {
-            f.write_char('-')?;
-            self.signum = SigNum::Positive;
-        } else if f.sign_plus() {
-            f.write_char('+')?;
-        }
-        let mut buf = Vec::new();
-        while !self.is_zero() {
-            let (_, mut remainder) = Self::div_mod_euclid(&mut self, &radix);
-            debug_assert!(remainder.digits.len() <= 1);
-            buf.push(remainder.digits.pop().unwrap_or_default());
-        }
-        if buf.is_empty() {
-            buf.push(D::default());
-        }
-        if let Some(pad) = f.width() {
-            match f.align() {
-                Some(std::fmt::Alignment::Left) => {
-                    buf.extend(
-                        std::iter::repeat(D::default())
-                            .take(pad - has_sign as usize)
-                            .skip(buf.len()),
-                    );
-                }
-                Some(std::fmt::Alignment::Right) => {
-                    todo!("need option to have ' ' in buf")
-                    // buf = std::iter::repeat(' ')
-                    //     .take(pad - has_sign as usize)
-                    //     .skip(buf.len())
-                    //     .chain(buf)
-                    //     .collect();
-                }
-                Some(std::fmt::Alignment::Center) => todo!("not ready"),
-                None => {}
-            }
-        }
-        if f.alternate() {
-            for (pos, digits) in buf
-                .iter()
-                .chunks(3)
-                .into_iter()
-                .collect_vec()
-                .into_iter()
-                .rev()
-                .with_position()
-            {
-                for digit in digits.collect_vec().into_iter().rev() {
-                    write!(f, "{digit:?}")?;
-                }
-                match pos {
-                    itertools::Position::Middle | itertools::Position::First => {
-                        f.write_char('_')?;
-                    }
-                    itertools::Position::Last | itertools::Position::Only => {}
-                }
-            }
-        } else {
-            for digit in buf.iter().rev() {
-                write!(f, "{digit:?}")?;
-            }
-        }
-        Ok(())
     }
 
     pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {

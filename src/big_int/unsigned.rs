@@ -11,7 +11,7 @@ use common::{extensions::iter::IteratorExt, require};
 use itertools::Itertools;
 use rand::RngCore;
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Write},
     iter,
     ops::{
         Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div,
@@ -353,16 +353,22 @@ pub struct BigInt<D> {
     pub(super) digits: DigitHolder<D>,
 }
 
-impl<D: Digit> std::fmt::Debug for BigInt<D> {
+impl<D: Digit> Debug for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Number {{ ")?;
-        self.inner_fmt(f)?;
+        self.inner_debug(f)?;
         write!(f, "}}")
     }
 }
 impl<D: Digit> std::fmt::Display for BigInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.clone().with_sign(Sign::Positive).inner_fmt(f, 10)
+        self.clone().write_with_radix(
+            f,
+            10,
+            f.alternate().then_some((3, '_')),
+            f.width()
+                .map(|w| (w, f.align().unwrap_or(std::fmt::Alignment::Right), f.fill())),
+        )
     }
 }
 impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
@@ -706,7 +712,7 @@ impl<D: Digit> BigInt<D> {
         self.digits.push(value);
     }
 
-    pub(super) fn inner_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub(super) fn inner_debug(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x[",)?;
         for (pos, elem) in self.digits.iter().rev().with_position() {
             write!(f, "{elem:0size$x}", size = D::BYTES * 2)?;
@@ -718,6 +724,85 @@ impl<D: Digit> BigInt<D> {
             }
         }
         write!(f, "]")
+    }
+    pub fn write_with_radix(
+        mut self,
+        f: &mut std::fmt::Formatter,
+        radix: u8,
+        seperator: Option<(usize, char)>,
+        pad: Option<(usize, std::fmt::Alignment, char)>,
+    ) -> Result<(), std::fmt::Error> {
+        use itertools::Either;
+        assert_ne!(radix, 0, "can't print with radix == 0");
+        assert!(
+            !pad.is_some_and(|(_, _, it)| it == ' ') || seperator.is_none(),
+            "todo alternate with space pad"
+        );
+        let big_radix = Self::from_digit(D::from(radix));
+        let mut buf = Vec::new();
+        while !self.is_zero() {
+            let (_, mut remainder) = Self::div_mod_euclid(&mut self, &big_radix);
+            debug_assert!(remainder.digits.len() <= 1);
+            buf.push(Either::Left(remainder.digits.pop().unwrap_or_default()));
+        }
+        if buf.is_empty() {
+            buf.push(Either::Left(D::default()));
+        }
+        if let Some((pad_size, align, pad_char)) = pad {
+            match align {
+                std::fmt::Alignment::Left => {
+                    buf.extend(
+                        std::iter::repeat(Either::Right(pad_char))
+                            .take(pad_size)
+                            .skip(buf.len()),
+                    );
+                }
+                std::fmt::Alignment::Right => {
+                    assert!(
+                        !pad_char.is_digit(radix as u32),
+                        "padding '{pad_char}' is a valid char with the radix {radix}"
+                    );
+                    buf = std::iter::repeat(Either::Right(pad_char))
+                        .take(pad_size)
+                        .skip(buf.len())
+                        .chain(buf)
+                        .collect();
+                }
+                std::fmt::Alignment::Center => todo!("not ready"),
+            }
+        }
+        if let Some((seperator_distance, seperator)) = seperator {
+            for (pos, digits) in buf
+                .iter()
+                .chunks(seperator_distance)
+                .into_iter()
+                .collect_vec()
+                .into_iter()
+                .rev()
+                .with_position()
+            {
+                for digit in digits.collect_vec().into_iter().rev() {
+                    match digit {
+                        Either::Left(digit) => write!(f, "{digit:?}")?,
+                        Either::Right(c) => write!(f, "{c}")?,
+                    }
+                }
+                match pos {
+                    itertools::Position::Middle | itertools::Position::First => {
+                        f.write_char(seperator)?;
+                    }
+                    itertools::Position::Last | itertools::Position::Only => {}
+                }
+            }
+        } else {
+            for digit in buf.iter().rev() {
+                match digit {
+                    Either::Left(digit) => write!(f, "{digit:?}")?,
+                    Either::Right(c) => write!(f, "{c}")?,
+                }
+            }
+        }
+        Ok(())
     }
     // getter
     pub const fn is_zero(&self) -> bool {
