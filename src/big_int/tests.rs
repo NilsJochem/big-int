@@ -406,7 +406,7 @@ fn bits() {
         .collect_vec()
     );
     assert_eq!(
-        <unsigned::BigInt<_> as Decomposable<bool>>::le_digits(&unsigned::BigInt::<u32>::from(0u8))
+        <unsigned::BigInt<_> as Decomposable<bool>>::le_digits(&unsigned::BigInt::<u32>::from(0))
             .next(),
         None
     );

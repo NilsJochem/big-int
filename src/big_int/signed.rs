@@ -385,8 +385,7 @@ impl<D: Digit> BigInt<D> {
     }
 
     pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {
-        let signum = self.signum;
-        BigUInt::rebase(&self.unsigned).with_sign(Sign::Positive) * signum
+        BigUInt::rebase(&self.unsigned).with_sign(self.signum.into())
     }
 
     /// needs to newly allocate on big endian systems
@@ -747,7 +746,7 @@ impl<D: Digit> BigInt<D> {
         *q *= signum_q;
 
         if let Some(d) = map_r.filter(|_| !r.is_zero()) {
-            *q += Self::from(1) * signum_q;
+            *q += BigUInt::from(1u8).with_sign(signum_q.into());
             *r = d - &*r;
         }
 

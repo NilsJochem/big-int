@@ -77,7 +77,7 @@ where
             (Self::Wide::new(carry, Self::default()) >> rhs)
                 .split_le()
                 .0
-                .eq_u8(0u8),
+                .eq_u8(0),
             "carry has more than {rhs} bits info"
         );
         let mut full = Self::Wide::widen(self) << rhs;
@@ -91,7 +91,7 @@ where
             (Self::Wide::new(Self::default(), carry) << rhs)
                 .split_le()
                 .1
-                .eq_u8(0u8),
+                .eq_u8(0),
             "carry has more than {rhs} bits info"
         );
         let mut full = Self::Wide::new(Self::default(), self) >> rhs;

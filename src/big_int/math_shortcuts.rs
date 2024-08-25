@@ -213,63 +213,6 @@ pub mod mul {
         }
     }
 }
-pub mod div {
-    use super::*;
-    pub struct Smaller;
-    impl MathShortcut<Left> for Smaller {
-        type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
-
-        fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
-            lhs <= rhs
-        }
-
-        fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Self::RES<'b, D> {
-            let (a, lhs) = lhs.take_keep_ref();
-            (
-                Moo::from_with_value(lhs, BigInt::from(0u8)),
-                Moo::from_with_value(rhs, a),
-            )
-        }
-    }
-    pub struct Same;
-    impl MathShortcut<Left> for Same {
-        type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
-
-        fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
-            lhs == rhs
-        }
-
-        fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Self::RES<'b, D> {
-            (
-                Moo::from_with_value(lhs, BigInt::from(1u8)),
-                Moo::from_with_value(rhs, BigInt::from(0u8)),
-            )
-        }
-    }
-    pub struct ByPowerOfTwo;
-    impl MathShortcut<Right> for ByPowerOfTwo {
-        type RES<'b, D: 'b> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>);
-
-        fn can_shortcut<D: Digit>(_lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
-            rhs.is_power_of_two()
-        }
-
-        fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Self::RES<'b, D> {
-            let pow = rhs.digits(2) - 1;
-            let (q, r) = BigInt::shr_internal(lhs, pow);
-            (q, Moo::from_with_value(rhs, r))
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -336,17 +279,18 @@ mod tests {
         const OP_DBG: &str = "+";
 
         const NON_ZERO: u8 = 42;
+        const ZERO: u8 = 0;
         #[test]
         fn can_use_shortcut_both_zero() {
-            can_shorcut::<add::Zero, u32>(0u8, 0u8, true, true);
+            can_shorcut::<add::Zero, u32>(ZERO, ZERO, true, true);
         }
         #[test]
         fn can_use_shortcut_rhs_zero() {
-            can_shorcut::<add::Zero, u32>(NON_ZERO, 0u8, false, true);
+            can_shorcut::<add::Zero, u32>(NON_ZERO, ZERO, false, true);
         }
         #[test]
         fn can_use_shortcut_lhs_zero() {
-            can_shorcut::<add::Zero, u32>(0u8, NON_ZERO, true, false);
+            can_shorcut::<add::Zero, u32>(ZERO, NON_ZERO, true, false);
         }
         #[test]
         fn can_use_shortcut_none_zero() {
@@ -355,16 +299,16 @@ mod tests {
 
         #[test]
         fn use_shortcut_lhs_zero() {
-            test_shorcut::<add::Zero, Left, u32>(0u8, NON_ZERO, NON_ZERO, OP_DBG);
+            test_shorcut::<add::Zero, Left, u32>(ZERO, NON_ZERO, NON_ZERO, OP_DBG);
         }
         #[test]
         fn use_shortcut_rhs_zero() {
-            test_shorcut::<add::Zero, Right, u32>(NON_ZERO, 0u8, NON_ZERO, OP_DBG);
+            test_shorcut::<add::Zero, Right, u32>(NON_ZERO, ZERO, NON_ZERO, OP_DBG);
         }
         #[test]
         fn use_shortcut_both_zero() {
-            test_shorcut::<add::Zero, Left, u32>(0u8, 0u8, 0u8, OP_DBG);
-            test_shorcut::<add::Zero, Right, u32>(0u8, 0u8, 0u8, OP_DBG);
+            test_shorcut::<add::Zero, Left, u32>(ZERO, ZERO, ZERO, OP_DBG);
+            test_shorcut::<add::Zero, Right, u32>(ZERO, ZERO, ZERO, OP_DBG);
         }
     }
 
@@ -373,19 +317,20 @@ mod tests {
         mod zero {
             use super::super::*;
 
+            const ZERO: u8 = 0;
             const NON_ZERO: u8 = 42;
 
             #[test]
             fn can_use_shortcut_both_zero() {
-                can_shorcut::<mul::ByZero, u32>(0u8, 0u8, true, true);
+                can_shorcut::<mul::ByZero, u32>(ZERO, ZERO, true, true);
             }
             #[test]
             fn can_use_shortcut_rhs_zero() {
-                can_shorcut::<mul::ByZero, u32>(NON_ZERO, 0u8, false, true);
+                can_shorcut::<mul::ByZero, u32>(NON_ZERO, ZERO, false, true);
             }
             #[test]
             fn can_use_shortcut_lhs_zero() {
-                can_shorcut::<mul::ByZero, u32>(0u8, NON_ZERO, true, false);
+                can_shorcut::<mul::ByZero, u32>(ZERO, NON_ZERO, true, false);
             }
             #[test]
             fn can_use_shortcut_none_zero() {
@@ -394,34 +339,35 @@ mod tests {
 
             #[test]
             fn use_shortcut_lhs_zero() {
-                test_shorcut::<mul::ByZero, Left, u32>(0u8, NON_ZERO, 0u8, super::OP_DBG);
+                test_shorcut::<mul::ByZero, Left, u32>(ZERO, NON_ZERO, ZERO, super::OP_DBG);
             }
             #[test]
             fn use_shortcut_rhs_zero() {
-                test_shorcut::<mul::ByZero, Right, u32>(NON_ZERO, 0u8, 0u8, super::OP_DBG);
+                test_shorcut::<mul::ByZero, Right, u32>(NON_ZERO, ZERO, ZERO, super::OP_DBG);
             }
             #[test]
             fn use_shortcut_both_zero() {
-                test_shorcut::<mul::ByZero, Left, u32>(0u8, 0u8, 0u8, super::OP_DBG);
-                test_shorcut::<mul::ByZero, Right, u32>(0u8, 0u8, 0u8, super::OP_DBG);
+                test_shorcut::<mul::ByZero, Left, u32>(ZERO, ZERO, ZERO, super::OP_DBG);
+                test_shorcut::<mul::ByZero, Right, u32>(ZERO, ZERO, ZERO, super::OP_DBG);
             }
         }
         mod one {
             use super::super::*;
 
+            const ONE: u8 = 1;
             const NON_ONE: u8 = 42;
 
             #[test]
             fn can_use_shortcut_both_one() {
-                can_shorcut::<mul::ByOne, u32>(1u8, 1u8, true, true);
+                can_shorcut::<mul::ByOne, u32>(ONE, ONE, true, true);
             }
             #[test]
             fn can_use_shortcut_rhs_one() {
-                can_shorcut::<mul::ByOne, u32>(NON_ONE, 1u8, false, true);
+                can_shorcut::<mul::ByOne, u32>(NON_ONE, ONE, false, true);
             }
             #[test]
             fn can_use_shortcut_lhs_one() {
-                can_shorcut::<mul::ByOne, u32>(1u8, NON_ONE, true, false);
+                can_shorcut::<mul::ByOne, u32>(ONE, NON_ONE, true, false);
             }
             #[test]
             fn can_use_shortcut_none_one() {
@@ -430,16 +376,16 @@ mod tests {
 
             #[test]
             fn use_shortcut_lhs_one() {
-                test_shorcut::<mul::ByOne, Left, u32>(1u8, NON_ONE, NON_ONE, super::OP_DBG);
+                test_shorcut::<mul::ByOne, Left, u32>(ONE, NON_ONE, NON_ONE, super::OP_DBG);
             }
             #[test]
             fn use_shortcut_rhs_one() {
-                test_shorcut::<mul::ByOne, Right, u32>(NON_ONE, 1u8, NON_ONE, super::OP_DBG);
+                test_shorcut::<mul::ByOne, Right, u32>(NON_ONE, ONE, NON_ONE, super::OP_DBG);
             }
             #[test]
             fn use_shortcut_both_one() {
-                test_shorcut::<mul::ByOne, Left, u32>(1u8, 1u8, 1u8, super::OP_DBG);
-                test_shorcut::<mul::ByOne, Right, u32>(1u8, 1u8, 1u8, super::OP_DBG);
+                test_shorcut::<mul::ByOne, Left, u32>(ONE, ONE, ONE, super::OP_DBG);
+                test_shorcut::<mul::ByOne, Right, u32>(ONE, ONE, ONE, super::OP_DBG);
             }
         }
 
@@ -503,58 +449,8 @@ mod tests {
             }
             #[test]
             fn mul_sign_pow_two() {
-                test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(2u8, 2u8, 4u8, super::OP_DBG);
-                // test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(-2u8, 2u8, -4u8, super::OP_DBG);
-                // test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(2u8, -2u8, -4u8, super::OP_DBG);
-                // test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(-2u8, -2u8, 4u8, super::OP_DBG);
+                test_shorcut_commte::<mul::ByPowerOfTwo, Left, u32>(2, 2, 4, super::OP_DBG);
             }
         }
-    }
-
-    mod t_div {
-        use super::*;
-
-        fn test_div_shorcut<M, S: Side, D: Digit + 'static>(
-            lhs: impl Into<BigInt<D>> + Copy,
-            rhs: impl Into<BigInt<D>> + Copy,
-            div_result: impl Into<BigInt<D>>,
-            mod_result: impl Into<BigInt<D>>,
-        ) where
-            for<'b> M: MathShortcut<S, RES<'b, D> = (Moo<'b, BigInt<D>>, Moo<'b, BigInt<D>>)>,
-        {
-            crate::big_int::tests::big_math::test_op(
-                lhs,
-                rhs,
-                |lhs, rhs| M::do_shortcut(lhs, rhs).0,
-                div_result,
-                "/",
-                crate::big_int::tests::big_math::Side::Left,
-            );
-            crate::big_int::tests::big_math::test_op(
-                lhs,
-                rhs,
-                |lhs, rhs| M::do_shortcut(lhs, rhs).1,
-                mod_result,
-                "%",
-                crate::big_int::tests::big_math::Side::Right,
-            );
-        }
-
-        #[test]
-        fn use_shortcut_both_positive() {
-            test_div_shorcut::<div::Smaller, Left, u32>(1u8, 3u8, 0u8, 1u8);
-        }
-        // #[test]
-        // fn use_shortcut_lhs_negative() {
-        //     test_div_shorcut::<div::Smaller, Left, u32>(-1i8, 3, -1i8, 2u8);
-        // }
-        // #[test]
-        // fn use_shortcut_rhs_negative() {
-        //     test_div_shorcut::<div::Smaller, Left, u32>(1u8, -3i8, 0u8, 1u8);
-        // }
-        // #[test]
-        // fn use_shortcut_both_negative() {
-        //     test_div_shorcut::<div::Smaller, Left, u32>(-1i8, -3, 1u8, 2u8);
-        // }
     }
 }

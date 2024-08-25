@@ -290,51 +290,43 @@ mod tests {
 
     #[test]
     fn round() {
-        assert_eq!(
-            Decimal::<u32>::new_coprime(17, 5u8).round(),
-            BigInt::from(3)
-        );
-        assert_eq!(
-            Decimal::<u32>::new_coprime(18, 5u8).round(),
-            BigInt::from(4)
-        );
+        assert_eq!(Decimal::<u32>::new_coprime(17, 5).round(), BigInt::from(3));
+        assert_eq!(Decimal::<u32>::new_coprime(18, 5).round(), BigInt::from(4));
     }
 
     #[test]
     fn round_to_numerator() {
         assert_eq!(
-            Decimal::<u32>::new(29, 69u8)
-                .unwrap()
-                .round_to_numerator(100u8),
-            Decimal::new(42, 100u8)
+            Decimal::<u32>::new(29, 69).unwrap().round_to_numerator(100),
+            Decimal::new(42, 100)
         );
     }
 
     #[test]
     fn add() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(1, 2u8) + Decimal::new_coprime(1, 4u8),
-            Decimal::new_coprime(3, 4u8)
+            Decimal::<u32>::new_coprime(1, 2) + Decimal::new_coprime(1, 4),
+            Decimal::new_coprime(3, 4)
         );
     }
     #[test]
     fn mul() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(2, 3u8) * Decimal::new_coprime(5, 7u8),
-            Decimal::new_coprime(10, 21u8)
+            Decimal::<u32>::new_coprime(2, 3) * Decimal::new_coprime(5, 7),
+            Decimal::new_coprime(10, 21)
         );
     }
     #[test]
     fn div() {
         assert_eq!(
-            Decimal::<u32>::new_coprime(2, 3u8) / Decimal::new_coprime(5, 7u8),
-            Decimal::new_coprime(14, 15u8)
+            Decimal::<u32>::new_coprime(2, 3) / Decimal::new_coprime(5, 7),
+            Decimal::new_coprime(14, 15)
         );
     }
     #[test]
     fn recip() {
-        let mut num = Decimal::<u32>::new_coprime(-2, 3u8);
+        let mut num = Decimal::<u32>::new_coprime(-2, 3);
         num.recip();
-        assert_eq!(num, Decimal::new_coprime(-3, 2u8));
+        assert_eq!(num, Decimal::new_coprime(-3, 2));
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt::{Binary, Debug, Display, LowerExp, LowerHex, Octal, UpperExp, UpperHex};
 
-use itertools::Either;
+pub use itertools::Either;
 
 pub trait Primitive:
     Copy

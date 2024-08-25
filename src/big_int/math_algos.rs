@@ -496,9 +496,9 @@ mod tests {
 
         #[test]
         fn assign_to_zero() {
-            let mut lhs = BigInt::<u32>::from(0u8);
-            add::assign(&mut lhs, &BigInt::from(1u8));
-            assert_eq!(lhs, BigInt::from(1u8));
+            let mut lhs = BigInt::<u32>::from(0);
+            add::assign(&mut lhs, &BigInt::from(1));
+            assert_eq!(lhs, BigInt::from(1));
         }
     }
     mod t_div {
@@ -515,7 +515,7 @@ mod tests {
                         BigInt::from(7_015_904_223_016_035_028_600_428_233_219_344_947u128)
                     ),
                     (
-                        BigInt::from(7u8),
+                        BigInt::from(7),
                         BigInt::from(6_290_849_648_139_398_910_340_837_476_093_233_246u128)
                     )
                 );
@@ -533,7 +533,7 @@ mod tests {
                     ),
                     (
                         BigInt::from(0xffee_ddcc_bbaa_9988_7766_5544_3322_1100u128),
-                        BigInt::from(0u8)
+                        BigInt::from(0)
                     )
                 );
             }
@@ -544,7 +544,7 @@ mod tests {
                         BigInt::from(0x8765_4321u32),
                         BigInt::from(0x060du32)
                     ),
-                    (BigInt::from(0x0016_6065u32), BigInt::from(0u8))
+                    (BigInt::from(0x0016_6065u32), BigInt::from(0))
                 );
             }
             #[test]

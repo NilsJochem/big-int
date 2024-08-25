@@ -140,11 +140,40 @@ impl<POSITIVE: super::primitve::UNum, D: Digit> FromIterator<POSITIVE> for BigIn
         ))
     }
 }
-impl<POSITIVE: super::primitve::UNum, D: Digit> From<POSITIVE> for BigInt<D> {
-    fn from(pos: POSITIVE) -> Self {
-        iter::once(pos).collect()
+cfg_if::cfg_if! {
+    if #[cfg(all(
+        feature = "uintFromAbsIPrimitive",
+        feature = "uintFromAssertIPrimitive"
+    ))] {
+        compile_error!("feature \"uintFromAbsIPrimitive\" and feature \"uintFromAssertIPrimitive\" cannot be enabled at the same time");
+    } else if #[cfg(any(
+        feature = "uintFromAbsIPrimitive",
+        feature = "uintFromAssertIPrimitive"
+    ))] {
+        use crate::big_int::primitve::{Either, INum};
+        impl<PRIMITIVE: super::primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
+            fn from(value: PRIMITIVE) -> Self {
+                iter::once(
+                    match value.select_sign() {
+                        Either::Left(pos) => pos,
+                        Either::Right(neg) => {
+                            #[cfg(feature = "uintFromAssertIPrimitive")]
+                            assert!(!neg.is_negative() , "tried to get BigUInt from {value} < 0");
+                            neg.abs()
+                        },
+                    }
+                ).collect()
+            }
+        }
+    } else {
+        impl<POSITIVE: super::primitve::UNum, D: Digit> From<POSITIVE> for BigInt<D> {
+            fn from(pos: POSITIVE) -> Self {
+                iter::once(pos).collect()
+            }
+        }
     }
 }
+
 impl<D: Digit> FromStr for BigInt<D> {
     type Err = FromStrErr;
 
