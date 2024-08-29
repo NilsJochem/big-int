@@ -4,7 +4,7 @@ use crate::{
     big_int::{
         digits::Digit,
         math_algos::gcd::Gcd,
-        signed::{BigInt, SigNum, Sign},
+        signed::{BigInt, SigNum},
         unsigned::BigInt as BigUInt,
     },
     boo::{Boo, Moo},
@@ -52,8 +52,7 @@ impl<D: Digit> Decimal<D> {
         if denominator.is_zero() {
             return None;
         }
-        let (_, factors) =
-            Gcd::new(numerator.into(), denominator.with_sign(Sign::Positive)).factors();
+        let (_, factors) = Gcd::new(numerator, denominator).factors();
         Some(Self::new_coprime(factors.a, factors.b))
     }
     fn extend(&mut self, rhs: &BigUInt<D>) {
@@ -68,8 +67,7 @@ impl<D: Digit> Decimal<D> {
     }
 
     pub fn div_mod_euclid(self) -> (BigInt<D>, BigUInt<D>) {
-        let (q, r) =
-            BigInt::div_mod_euclid(self.numerator, self.denominator.with_sign(Sign::Positive));
+        let (q, r) = BigInt::div_mod_euclid(self.numerator, BigInt::from(self.denominator));
         (
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
@@ -77,7 +75,7 @@ impl<D: Digit> Decimal<D> {
     }
 
     pub fn round(self) -> BigInt<D> {
-        let d = self.denominator.with_sign(Sign::Positive);
+        let d = self.denominator;
         let (q, r) = BigInt::div_mod_euclid(self.numerator, &d);
         let (q, r) = (
             q.expect_owned("no mut given"),
@@ -103,12 +101,12 @@ impl<D: Digit> Decimal<D> {
     }
 
     pub fn round_to_numerator(self, new: impl Into<BigUInt<D>>) -> Option<Self> {
-        let new = new.into().with_sign(Sign::Positive);
+        let new = new.into();
         Self::new(
             Self::new(&new * self.numerator, self.denominator)
                 .unwrap()
                 .round(),
-            new.split_sign().1,
+            new,
         )
     }
 

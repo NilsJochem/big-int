@@ -16,6 +16,7 @@ default = ["base64", "uintFromAssertIPrimitive"]
 base64 = ["dep:base64"]
 uintFromAssertIPrimitive = []
 uintFromAbsIPrimitive = []
+arcModulus = []
 
 [lints]
 # base
