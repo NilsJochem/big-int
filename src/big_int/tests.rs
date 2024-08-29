@@ -812,40 +812,53 @@ pub(super) mod big_math {
         );
     }
 
-    #[test]
-    fn div_sign() {
-        assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from_digit(4)),
-            (
-                Moo::Owned(BigInt::from_digit(1)),
-                Moo::Owned(BigUInt::from_digit(3))
-            ),
-            "no negative"
-        );
-        assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from_digit(7), BigInt::from(-4)),
-            (
-                Moo::Owned(BigInt::from(-1)),
-                Moo::Owned(BigUInt::from_digit(3))
-            ),
-            "rhs negative"
-        );
-        assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(4)),
-            (
-                Moo::Owned(BigInt::from(-2)),
-                Moo::Owned(BigUInt::from_digit(1))
-            ),
-            "lhs negative"
-        );
-        assert_eq!(
-            BigInt::div_mod_euclid(BigInt::<u32>::from(-7), BigInt::from(-4)),
-            (
-                Moo::Owned(BigInt::from(2)),
-                Moo::Owned(BigUInt::from_digit(1))
-            ),
-            "both negative"
-        );
+    mod div_sign {
+        use super::*;
+
+        #[test]
+        fn no_negative() {
+            assert_eq!(
+                BigInt::div_mod_euclid(BigInt::<u8>::from_digit(7), BigInt::from_digit(4)),
+                (
+                    Moo::Owned(BigInt::from_digit(1)),
+                    Moo::Owned(BigUInt::from_digit(3))
+                ),
+                "no negative"
+            );
+        }
+        #[test]
+        fn rhs_negative() {
+            assert_eq!(
+                BigInt::div_mod_euclid(BigInt::<u8>::from_digit(7), BigInt::from(-4)),
+                (
+                    Moo::Owned(BigInt::from(-1)),
+                    Moo::Owned(BigUInt::from_digit(3))
+                ),
+                "rhs negative"
+            );
+        }
+        #[test]
+        fn lhs_negative() {
+            assert_eq!(
+                BigInt::div_mod_euclid(BigInt::<u8>::from(-7), BigInt::from(4)),
+                (
+                    Moo::Owned(BigInt::from(-2)),
+                    Moo::Owned(BigUInt::from_digit(1))
+                ),
+                "lhs negative"
+            );
+        }
+        #[test]
+        fn both_negative() {
+            assert_eq!(
+                BigInt::div_mod_euclid(BigInt::<u8>::from(-7), BigInt::from(-4)),
+                (
+                    Moo::Owned(BigInt::from(2)),
+                    Moo::Owned(BigUInt::from_digit(1))
+                ),
+                "both negative"
+            );
+        }
     }
 
     #[test]

@@ -27,7 +27,7 @@ pub(super) mod digit_holder {
         ops::{Index, IndexMut},
     };
 
-    #[derive(Clone)]
+    #[derive(Clone, Hash)]
     pub enum DigitHolder<D> {
         None,
         One(D),
@@ -183,7 +183,7 @@ pub(super) mod digit_holder {
         pub fn pop(&mut self) -> Option<D> {
             if self.len() <= 2 {
                 match std::mem::take(self) {
-                    Self::None => unreachable!(),
+                    Self::None => None,
                     Self::One(digit) => Some(digit),
                     Self::Other(mut digits) => {
                         let out = digits.pop();
@@ -347,7 +347,7 @@ pub(super) mod digit_holder {
     }
 }
 use digit_holder::DigitHolder;
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Hash)]
 pub struct BigInt<D> {
     /// holds the digits in LE order
     pub(super) digits: DigitHolder<D>,
@@ -814,6 +814,13 @@ impl<D: Digit> BigInt<D> {
     // getter
     pub const fn is_zero(&self) -> bool {
         self.digits.is_empty()
+    }
+    pub const fn signum(&self) -> SigNum {
+        if self.is_zero() {
+            SigNum::Zero
+        } else {
+            SigNum::Positive
+        }
     }
     pub fn is_one(&self) -> bool {
         self.digits.len() == 1 && self.digits.first().unwrap().eq_u8(1)
