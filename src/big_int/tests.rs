@@ -8,7 +8,7 @@ mod create {
     use unsigned::FromStrErr;
 
     use super::*;
-    use crate::rng::seeded_rng;
+    use crate::util::rng::seeded_rng;
     #[test]
     fn cast_signum() {
         for i in i8::MIN..=i8::MAX {
@@ -409,7 +409,7 @@ pub(super) mod big_math {
 
     use std::fmt::Debug;
 
-    use crate::boo::{Boo, Moo};
+    use crate::util::boo::{Boo, Moo};
 
     use super::*;
     pub fn test_op_commute<B: Clone + Eq + Debug>(

@@ -130,7 +130,7 @@ pub mod mul {
 
 pub mod div {
 
-    use crate::boo::Moo;
+    use crate::util::boo::Moo;
 
     use super::*;
 
@@ -362,7 +362,7 @@ pub mod gcd {
             let factors = self.bezout_builder.calculate_factors(&self.gcd, self.new_s);
             (self.gcd, factors)
         }
-        /// (gcd, bezout_x, factor_b)
+        /// (`gcd`, `bezout_x`, `factor_b`)
         pub fn all_no_calc(self) -> (BigUInt<D>, BigInt<D>, BigInt<D>) {
             (self.gcd, self.old_s, self.new_s)
         }

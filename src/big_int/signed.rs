@@ -1,4 +1,4 @@
-use crate::boo::{Boo, Moo};
+use crate::util::boo::{Boo, Moo};
 
 use crate::big_int::{
     digits::{Convert, Decomposable, Digit, Signed},

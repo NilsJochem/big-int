@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::{digits::Digit, unsigned::BigInt};
 #[allow(unused_imports)]
-use crate::boo::{Boo, Moo};
+use crate::util::boo::{Boo, Moo};
 
 macro_rules! try_all {
     ($lhs:ident, $rhs:ident $(, )?) => {};

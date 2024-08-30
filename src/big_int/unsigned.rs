@@ -4,7 +4,7 @@ use crate::{
         math_shortcuts::MathShortcut,
         signed::{BigInt as SignedBigInt, SigNum, Sign},
     },
-    boo::{Boo, Moo},
+    util::boo::{Boo, Moo},
 };
 
 use common::{extensions::iter::IteratorExt, require};
@@ -673,9 +673,9 @@ impl<D: Digit> BigInt<D> {
     /// # Example
     /// `0x00_0100` <= `BigInt::new_random(2..=3, _)` <= `0xff_ffff`,
     pub fn new_random(bytes: RangeInclusive<usize>, mut rng: impl RngCore) -> Self {
-        let bytes =
-            bytes.start() + crate::rng::next_bound(*bytes.end() - *bytes.start(), &mut rng, 10);
-        let mut rnd_bytes = crate::rng::random_bytes(rng);
+        let bytes = bytes.start()
+            + crate::util::rng::next_bound(*bytes.end() - *bytes.start(), &mut rng, 10);
+        let mut rnd_bytes = crate::util::rng::random_bytes(rng);
         let last = rnd_bytes
             .by_ref()
             .take(5) // cap the number of tries

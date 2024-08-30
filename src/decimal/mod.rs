@@ -7,7 +7,7 @@ use crate::{
         signed::{BigInt, SigNum},
         unsigned::BigInt as BigUInt,
     },
-    boo::{Boo, Moo},
+    util::boo::{Boo, Moo},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
