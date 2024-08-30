@@ -5,7 +5,7 @@ use std::{
     ops::{Add, BitAndAssign, BitOrAssign, BitXor, BitXorAssign, Div, Mul, Shl, Shr, ShrAssign},
 };
 
-use crate::big_int::signed::SigNum;
+use crate::SigNum;
 
 pub trait Signed {
     fn signum(&self) -> SigNum;

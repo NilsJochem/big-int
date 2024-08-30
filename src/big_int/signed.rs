@@ -1,8 +1,8 @@
 use crate::util::boo::{Boo, Moo};
 
-use crate::big_int::{
-    digits::{Convert, Decomposable, Digit, Signed},
-    unsigned::BigInt as BigUInt,
+use crate::{
+    big_int::digits::{Convert, Decomposable, Digit, Signed},
+    BigUInt,
 };
 
 use itertools::Either;

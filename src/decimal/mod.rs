@@ -1,27 +1,23 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{
-    big_int::{
-        digits::Digit,
-        math_algos::gcd::Gcd,
-        signed::{BigInt, SigNum},
-        unsigned::BigInt as BigUInt,
-    },
+    big_int::{digits::Digit, math_algos::gcd::Gcd},
     util::boo::{Boo, Moo},
+    BigIInt, BigUInt, SigNum,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimal<D: Digit> {
-    numerator: BigInt<D>,
+    numerator: BigIInt<D>,
     denominator: BigUInt<D>,
 }
 
-impl<D: Digit> From<BigInt<D>> for Decimal<D> {
-    fn from(value: BigInt<D>) -> Self {
+impl<D: Digit> From<BigIInt<D>> for Decimal<D> {
+    fn from(value: BigIInt<D>) -> Self {
         Self::new_coprime(value, 1u8)
     }
 }
-impl<D: Digit> TryFrom<Decimal<D>> for BigInt<D> {
+impl<D: Digit> TryFrom<Decimal<D>> for BigIInt<D> {
     type Error = Decimal<D>;
 
     fn try_from(value: Decimal<D>) -> Result<Self, Self::Error> {
@@ -34,7 +30,7 @@ impl<D: Digit> TryFrom<Decimal<D>> for BigInt<D> {
 }
 impl<D: Digit> Decimal<D> {
     /// assumes gcd(n, d) == 1
-    fn new_coprime(numerator: impl Into<BigInt<D>>, denominator: impl Into<BigUInt<D>>) -> Self {
+    fn new_coprime(numerator: impl Into<BigIInt<D>>, denominator: impl Into<BigUInt<D>>) -> Self {
         let numerator = numerator.into();
         let denominator = denominator.into();
         debug_assert!(!denominator.is_zero());
@@ -45,7 +41,7 @@ impl<D: Digit> Decimal<D> {
         }
     }
     pub fn new(
-        numerator: impl Into<BigInt<D>>,
+        numerator: impl Into<BigIInt<D>>,
         denominator: impl Into<BigUInt<D>>,
     ) -> Option<Self> {
         let denominator = denominator.into();
@@ -66,37 +62,37 @@ impl<D: Digit> Decimal<D> {
         (*self.numerator).cmp(&self.denominator)
     }
 
-    pub fn div_mod_euclid(self) -> (BigInt<D>, BigUInt<D>) {
-        let (q, r) = BigInt::div_mod_euclid(self.numerator, BigInt::from(self.denominator));
+    pub fn div_mod_euclid(self) -> (BigIInt<D>, BigUInt<D>) {
+        let (q, r) = BigIInt::div_mod_euclid(self.numerator, BigIInt::from(self.denominator));
         (
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
         )
     }
 
-    pub fn round(self) -> BigInt<D> {
+    pub fn round(self) -> BigIInt<D> {
         let d = self.denominator;
-        let (q, r) = BigInt::div_mod_euclid(self.numerator, &d);
+        let (q, r) = BigIInt::div_mod_euclid(self.numerator, &d);
         let (q, r) = (
             q.expect_owned("no mut given"),
             r.expect_owned("no mut given"),
         );
         if r * D::from(2u8) > d {
-            q + BigInt::ONE
+            q + BigIInt::ONE
         } else {
             q
         }
     }
-    pub fn floor(self) -> BigInt<D> {
+    pub fn floor(self) -> BigIInt<D> {
         let (q, _) = self.div_mod_euclid();
         q
     }
-    pub fn ceil(self) -> BigInt<D> {
+    pub fn ceil(self) -> BigIInt<D> {
         let (q, r) = self.div_mod_euclid();
         if r.is_zero() {
             q
         } else {
-            q + BigInt::ONE
+            q + BigIInt::ONE
         }
     }
 
@@ -118,7 +114,7 @@ impl<D: Digit> Decimal<D> {
         std::mem::swap(&mut *self.numerator, &mut self.denominator);
     }
 
-    fn split(value: Boo<'_, Self>) -> (Boo<'_, BigInt<D>>, Boo<'_, BigUInt<D>>) {
+    fn split(value: Boo<'_, Self>) -> (Boo<'_, BigIInt<D>>, Boo<'_, BigUInt<D>>) {
         match value {
             Boo::Owned(value) => (Boo::Owned(value.numerator), Boo::Owned(value.denominator)),
             Boo::Borrowed(value) => (
@@ -142,7 +138,7 @@ impl<D: Digit> Decimal<D> {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
                 let (borrow_numerator, borrow_denominator) = Self::split(borrow);
                 *borrow_mut = Self::new(
-                    BigInt::add(&borrow_mut.numerator, borrow_numerator)
+                    BigIInt::add(&borrow_mut.numerator, borrow_numerator)
                         .expect_owned("not mut given"),
                     borrow_denominator.cloned(),
                 )
@@ -154,7 +150,7 @@ impl<D: Digit> Decimal<D> {
                 let (rhs_numerator, _) = Self::split(rhs);
                 Moo::Owned(
                     Self::new(
-                        BigInt::add(lhs_numerator, rhs_numerator).expect_owned("not mut given"),
+                        BigIInt::add(lhs_numerator, rhs_numerator).expect_owned("not mut given"),
                         lhs_denominator.cloned(),
                     )
                     .unwrap(),
@@ -202,7 +198,7 @@ impl<D: Digit> Decimal<D> {
             (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
                 let (borrow_numerator, borrow_denominator) = Self::split(borrow);
                 *borrow_mut = Self::new(
-                    BigInt::mul(&borrow_mut.numerator, borrow_numerator)
+                    BigIInt::mul(&borrow_mut.numerator, borrow_numerator)
                         .expect_owned("not mut given"),
                     BigUInt::mul(&borrow_mut.denominator, borrow_denominator)
                         .expect_owned("not mut given"),
@@ -215,7 +211,7 @@ impl<D: Digit> Decimal<D> {
                 let (rhs_numerator, rhs_denominator) = Self::split(rhs);
                 Moo::Owned(
                     Self::new(
-                        BigInt::mul(lhs_numerator, rhs_numerator).expect_owned("not mut given"),
+                        BigIInt::mul(lhs_numerator, rhs_numerator).expect_owned("not mut given"),
                         BigUInt::mul(lhs_denominator, rhs_denominator)
                             .expect_owned("not mut given"),
                     )
@@ -290,11 +286,11 @@ mod tests {
     fn round() {
         assert_eq!(
             Decimal::<u32>::new_coprime(17, 5).round(),
-            BigInt::from_digit(3)
+            BigIInt::from_digit(3)
         );
         assert_eq!(
             Decimal::<u32>::new_coprime(18, 5).round(),
-            BigInt::from_digit(4)
+            BigIInt::from_digit(4)
         );
     }
 

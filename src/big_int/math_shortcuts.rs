@@ -1,7 +1,6 @@
 #![allow(clippy::wildcard_imports)]
-use super::{digits::Digit, unsigned::BigInt};
-#[allow(unused_imports)]
 use crate::util::boo::{Boo, Moo};
+use crate::{big_int::digits::Digit, BigUInt};
 
 macro_rules! try_all {
     ($lhs:ident, $rhs:ident $(, )?) => {};
@@ -51,47 +50,47 @@ pub trait MathShortcut<S: Side> {
 
     /// can the operation be made significantly easier by using special info about the lhs.
     /// For example 0 - x = -x
-    fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool;
+    fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool;
     /// apply the shortcut with the special lhs
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
+        lhs: Boo<'b, BigUInt<D>>,
+        rhs: Boo<'b, BigUInt<D>>,
     ) -> Self::RES<'b, D>;
 }
 /// refers its methods directly to *_rhs and with flipped parametes for *_lhs
 pub trait MathShortcutFlip {
     /// can the operation be made significantly easier by using special info about one side.
     /// For example 0 + x = x = x + 0
-    fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool;
+    fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool;
     /// apply the shortcut
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> Moo<'b, BigInt<D>>;
+        lhs: Boo<'b, BigUInt<D>>,
+        rhs: Boo<'b, BigUInt<D>>,
+    ) -> Moo<'b, BigUInt<D>>;
 }
 impl<Flip: MathShortcutFlip> MathShortcut<Right> for Flip {
-    type RES<'b, D: 'b> = Moo<'b, BigInt<D>>;
+    type RES<'b, D: 'b> = Moo<'b, BigUInt<D>>;
 
-    fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+    fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
         Self::can_shortcut(lhs, rhs)
     }
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> Moo<'b, BigInt<D>> {
+        lhs: Boo<'b, BigUInt<D>>,
+        rhs: Boo<'b, BigUInt<D>>,
+    ) -> Moo<'b, BigUInt<D>> {
         Self::do_shortcut(lhs, rhs)
     }
 }
 impl<Flip: MathShortcutFlip> MathShortcut<Left> for Flip {
-    type RES<'b, D: 'b> = Moo<'b, BigInt<D>>;
+    type RES<'b, D: 'b> = Moo<'b, BigUInt<D>>;
 
-    fn can_shortcut<D: Digit>(lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+    fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
         Self::can_shortcut(rhs, lhs)
     }
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> Moo<'b, BigInt<D>> {
+        lhs: Boo<'b, BigUInt<D>>,
+        rhs: Boo<'b, BigUInt<D>>,
+    ) -> Moo<'b, BigUInt<D>> {
         Self::do_shortcut(rhs, lhs)
     }
 }
@@ -110,14 +109,14 @@ pub mod add {
     use super::*;
     pub struct Zero;
     impl MathShortcutFlip for Zero {
-        fn can_shortcut<D: Digit>(_lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+        fn can_shortcut<D: Digit>(_lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
             rhs.is_zero()
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Moo<'b, BigInt<D>> {
+            lhs: Boo<'b, BigUInt<D>>,
+            rhs: Boo<'b, BigUInt<D>>,
+        ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
     }
@@ -126,36 +125,17 @@ pub mod add {
 pub mod sub {
     use super::*;
     pub struct Zero;
-    // impl MathShortcut<Left> for Zero {
-    //     type RES<'b, D: 'b> = Moo<'b, crate::big_int::signed::BigInt<D>>;
-
-    //     fn can_shortcut<D: Digit>(
-    //         lhs: &crate::big_int::signed::BigInt<D>,
-    //         _: &crate::big_int::signed::BigInt<D>,
-    //     ) -> bool {
-    //         lhs.is_zero()
-    //     }
-
-    //     fn do_shortcut<'b, D: Digit>(
-    //         lhs: Boo<'b, crate::big_int::signed::BigInt<D>>,
-    //         rhs: Boo<'b, crate::big_int::signed::BigInt<D>>,
-    //     ) -> Moo<'b, crate::big_int::signed::BigInt<D>> {
-    //         let mut either = super::get_lhs(rhs, lhs);
-    //         either.negate();
-    //         either
-    //     }
-    // }
     impl MathShortcut<Right> for Zero {
-        type RES<'b, D: 'b> = Moo<'b, BigInt<D>>;
+        type RES<'b, D: 'b> = Moo<'b, BigUInt<D>>;
 
-        fn can_shortcut<D: Digit>(_: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+        fn can_shortcut<D: Digit>(_: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
             rhs.is_zero()
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Moo<'b, BigInt<D>> {
+            lhs: Boo<'b, BigUInt<D>>,
+            rhs: Boo<'b, BigUInt<D>>,
+        ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
     }
@@ -165,14 +145,14 @@ pub mod mul {
     use super::*;
     pub struct ByZero;
     impl MathShortcutFlip for ByZero {
-        fn can_shortcut<D: Digit>(_lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+        fn can_shortcut<D: Digit>(_lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
             rhs.is_zero()
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Moo<'b, BigInt<D>> {
+            lhs: Boo<'b, BigUInt<D>>,
+            rhs: Boo<'b, BigUInt<D>>,
+        ) -> Moo<'b, BigUInt<D>> {
             match (lhs, rhs) {
                 (Boo::BorrowedMut(lhs), rhs) => {
                     *lhs = rhs.cloned();
@@ -185,27 +165,27 @@ pub mod mul {
     }
     pub struct ByOne;
     impl MathShortcutFlip for ByOne {
-        fn can_shortcut<D: Digit>(_lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+        fn can_shortcut<D: Digit>(_lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
             rhs.is_one()
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Moo<'b, BigInt<D>> {
+            lhs: Boo<'b, BigUInt<D>>,
+            rhs: Boo<'b, BigUInt<D>>,
+        ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
     }
     pub struct ByPowerOfTwo;
     impl MathShortcutFlip for ByPowerOfTwo {
-        fn can_shortcut<D: Digit>(_lhs: &BigInt<D>, rhs: &BigInt<D>) -> bool {
+        fn can_shortcut<D: Digit>(_lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool {
             rhs.is_power_of_two()
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigInt<D>>,
-            rhs: Boo<'b, BigInt<D>>,
-        ) -> Moo<'b, BigInt<D>> {
+            lhs: Boo<'b, BigUInt<D>>,
+            rhs: Boo<'b, BigUInt<D>>,
+        ) -> Moo<'b, BigUInt<D>> {
             let pow = rhs.digits(2) - 1;
             let mut either = super::get_lhs(lhs, rhs);
             *either <<= pow;
@@ -220,8 +200,8 @@ mod tests {
 
     #[allow(clippy::needless_pass_by_value)]
     fn can_shorcut<M, D: Digit>(
-        lhs: impl Into<BigInt<D>>,
-        rhs: impl Into<BigInt<D>>,
+        lhs: impl Into<BigUInt<D>>,
+        rhs: impl Into<BigUInt<D>>,
         l_result: bool,
         r_result: bool,
     ) where
@@ -241,12 +221,12 @@ mod tests {
         );
     }
     fn test_shorcut<M, S: Side, D: Digit + 'static>(
-        lhs: impl Into<BigInt<D>>,
-        rhs: impl Into<BigInt<D>>,
-        result: impl Into<BigInt<D>>,
+        lhs: impl Into<BigUInt<D>>,
+        rhs: impl Into<BigUInt<D>>,
+        result: impl Into<BigUInt<D>>,
         op_dbg: &str,
     ) where
-        for<'b> M: MathShortcut<S, RES<'b, D> = Moo<'b, BigInt<D>>>,
+        for<'b> M: MathShortcut<S, RES<'b, D> = Moo<'b, BigUInt<D>>>,
     {
         crate::big_int::tests::big_math::test_op(
             lhs,
@@ -258,12 +238,12 @@ mod tests {
         );
     }
     fn test_shorcut_commte<M, S: Side, D: Digit + 'static>(
-        lhs: impl Into<BigInt<D>>,
-        rhs: impl Into<BigInt<D>>,
-        result: impl Into<BigInt<D>>,
+        lhs: impl Into<BigUInt<D>>,
+        rhs: impl Into<BigUInt<D>>,
+        result: impl Into<BigUInt<D>>,
         op_dbg: &str,
     ) where
-        for<'b> M: MathShortcut<S, RES<'b, D> = Moo<'b, BigInt<D>>>,
+        for<'b> M: MathShortcut<S, RES<'b, D> = Moo<'b, BigUInt<D>>>,
     {
         crate::big_int::tests::big_math::test_op_commute(
             lhs,

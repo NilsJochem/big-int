@@ -2,9 +2,9 @@ use crate::{
     big_int::{
         digits::{Convert, Decomposable, Digit, Wide},
         math_shortcuts::MathShortcut,
-        signed::{BigInt as SignedBigInt, SigNum, Sign},
     },
     util::boo::{Boo, Moo},
+    BigIInt, SigNum, Sign,
 };
 
 use common::{extensions::iter::IteratorExt, require};
@@ -458,8 +458,8 @@ pub enum FromStrErr {
 }
 
 // From traits
-impl<D: Digit> From<SignedBigInt<D>> for BigInt<D> {
-    fn from(value: SignedBigInt<D>) -> Self {
+impl<D: Digit> From<BigIInt<D>> for BigInt<D> {
+    fn from(value: BigIInt<D>) -> Self {
         value.unsigned
     }
 }
@@ -554,7 +554,8 @@ impl<D: Digit> Decomposable<bool> for BigInt<D> {
 pub mod radix {
     use core::num::NonZero;
 
-    use crate::big_int::{digits::Digit, unsigned::BigInt};
+    use super::BigInt;
+    use crate::big_int::digits::Digit;
     use common::require;
 
     pub const NONZERO_ONE: NonZero<usize> = {
@@ -659,8 +660,8 @@ impl<D: Digit> BigInt<D> {
     };
 
     // construction
-    pub fn with_sign(self, sign: Sign) -> SignedBigInt<D> {
-        SignedBigInt {
+    pub fn with_sign(self, sign: Sign) -> BigIInt<D> {
+        BigIInt {
             signum: if self.is_zero() {
                 SigNum::Zero
             } else {
