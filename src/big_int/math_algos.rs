@@ -1,4 +1,6 @@
 #![allow(clippy::wildcard_imports)]
+// SPDX-FileCopyrightText: 2024 Nils Jochem
+// SPDX-License-Identifier: MPL-2.0
 use crate::{
     big_int::digits::{Digit, Wide},
     BigUInt, Sign,

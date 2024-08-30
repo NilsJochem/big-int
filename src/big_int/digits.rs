@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2024 Nils Jochem
+// SPDX-License-Identifier: MPL-2.0
 use itertools::Itertools;
 use std::{
     convert::Infallible,

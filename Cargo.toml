@@ -1,7 +1,12 @@
+# SPDX-FileCopyrightText: 2024 Nils Jochem
+# SPDX-License-Identifier: MPL-2.0
 [package]
-name = "crypto"
+name = "big-int"
 version = "0.2.2"
 edition = "2021"
+authors = ["Nils Jochem"]
+license = "MPL-2.0"
+repository = "https://github.com/NilsJochem/big-int"
 
 [dependencies]
 rand = "0.8.5"

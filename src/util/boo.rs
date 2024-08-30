@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2024 Nils Jochem
+// SPDX-License-Identifier: MPL-2.0
 use std::ops::{Deref, DerefMut};
 
 /// Borrowed or Owned, used to capture all possible variants when implementing traits for Self/&Self
