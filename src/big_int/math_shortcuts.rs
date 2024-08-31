@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 // SPDX-FileCopyrightText: 2024 Nils Jochem
 // SPDX-License-Identifier: MPL-2.0
-use crate::util::boo::{Boo, Moo};
+use crate::util::boo::{Mob, Moo};
 use crate::{big_int::digits::Digit, BigUInt};
 
 macro_rules! try_all {
@@ -55,8 +55,8 @@ pub trait MathShortcut<S: Side> {
     fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool;
     /// apply the shortcut with the special lhs
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigUInt<D>>,
-        rhs: Boo<'b, BigUInt<D>>,
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
     ) -> Self::RES<'b, D>;
 }
 /// refers its methods directly to *_rhs and with flipped parametes for *_lhs
@@ -66,8 +66,8 @@ pub trait MathShortcutFlip {
     fn can_shortcut<D: Digit>(lhs: &BigUInt<D>, rhs: &BigUInt<D>) -> bool;
     /// apply the shortcut
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigUInt<D>>,
-        rhs: Boo<'b, BigUInt<D>>,
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
     ) -> Moo<'b, BigUInt<D>>;
 }
 impl<Flip: MathShortcutFlip> MathShortcut<Right> for Flip {
@@ -77,8 +77,8 @@ impl<Flip: MathShortcutFlip> MathShortcut<Right> for Flip {
         Self::can_shortcut(lhs, rhs)
     }
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigUInt<D>>,
-        rhs: Boo<'b, BigUInt<D>>,
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
     ) -> Moo<'b, BigUInt<D>> {
         Self::do_shortcut(lhs, rhs)
     }
@@ -90,16 +90,16 @@ impl<Flip: MathShortcutFlip> MathShortcut<Left> for Flip {
         Self::can_shortcut(rhs, lhs)
     }
     fn do_shortcut<'b, D: Digit>(
-        lhs: Boo<'b, BigUInt<D>>,
-        rhs: Boo<'b, BigUInt<D>>,
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
     ) -> Moo<'b, BigUInt<D>> {
         Self::do_shortcut(rhs, lhs)
     }
 }
 
-pub(super) fn get_lhs<'b, B: Clone>(lhs: Boo<'b, B>, rhs: Boo<'b, B>) -> Moo<'b, B> {
+pub(super) fn get_lhs<'b, B: Clone>(lhs: Mob<'b, B>, rhs: Mob<'b, B>) -> Moo<'b, B> {
     match (lhs, rhs) {
-        (lhs, Boo::BorrowedMut(rhs)) => {
+        (lhs, Mob::BorrowedMut(rhs)) => {
             *rhs = lhs.cloned();
             Moo::BorrowedMut(rhs)
         }
@@ -116,8 +116,8 @@ pub mod add {
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigUInt<D>>,
-            rhs: Boo<'b, BigUInt<D>>,
+            lhs: Mob<'b, BigUInt<D>>,
+            rhs: Mob<'b, BigUInt<D>>,
         ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
@@ -135,8 +135,8 @@ pub mod sub {
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigUInt<D>>,
-            rhs: Boo<'b, BigUInt<D>>,
+            lhs: Mob<'b, BigUInt<D>>,
+            rhs: Mob<'b, BigUInt<D>>,
         ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
@@ -152,15 +152,15 @@ pub mod mul {
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigUInt<D>>,
-            rhs: Boo<'b, BigUInt<D>>,
+            lhs: Mob<'b, BigUInt<D>>,
+            rhs: Mob<'b, BigUInt<D>>,
         ) -> Moo<'b, BigUInt<D>> {
             match (lhs, rhs) {
-                (Boo::BorrowedMut(lhs), rhs) => {
+                (Mob::BorrowedMut(lhs), rhs) => {
                     *lhs = rhs.cloned();
                     Moo::BorrowedMut(lhs)
                 }
-                (_, Boo::BorrowedMut(rhs)) => Moo::BorrowedMut(rhs),
+                (_, Mob::BorrowedMut(rhs)) => Moo::BorrowedMut(rhs),
                 (_, rhs) => Moo::Owned(rhs.cloned()),
             }
         }
@@ -172,8 +172,8 @@ pub mod mul {
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigUInt<D>>,
-            rhs: Boo<'b, BigUInt<D>>,
+            lhs: Mob<'b, BigUInt<D>>,
+            rhs: Mob<'b, BigUInt<D>>,
         ) -> Moo<'b, BigUInt<D>> {
             super::get_lhs(lhs, rhs)
         }
@@ -185,8 +185,8 @@ pub mod mul {
         }
 
         fn do_shortcut<'b, D: Digit>(
-            lhs: Boo<'b, BigUInt<D>>,
-            rhs: Boo<'b, BigUInt<D>>,
+            lhs: Mob<'b, BigUInt<D>>,
+            rhs: Mob<'b, BigUInt<D>>,
         ) -> Moo<'b, BigUInt<D>> {
             let pow = rhs.digits(2) - 1;
             let mut either = super::get_lhs(lhs, rhs);

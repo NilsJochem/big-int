@@ -415,13 +415,13 @@ fn bits() {
 pub(super) mod big_math {
     use super::*;
 
-    use crate::util::boo::{Boo, Moo};
+    use crate::util::boo::{Mob, Moo};
     use std::fmt::Debug;
 
     pub fn test_op_commute<B: Clone + Eq + Debug>(
         lhs: impl Into<B>,
         rhs: impl Into<B>,
-        op: impl for<'b> Fn(Boo<'b, B>, Boo<'b, B>) -> Moo<'b, B>,
+        op: impl for<'b> Fn(Mob<'b, B>, Mob<'b, B>) -> Moo<'b, B>,
         result: impl Into<B>,
         op_dbg: &str,
     ) {
@@ -460,7 +460,7 @@ pub(super) mod big_math {
     pub fn test_op<B: Clone + Eq + Debug>(
         lhs: impl Into<B>,
         rhs: impl Into<B>,
-        op: impl for<'b> Fn(Boo<'b, B>, Boo<'b, B>) -> Moo<'b, B>,
+        op: impl for<'b> Fn(Mob<'b, B>, Mob<'b, B>) -> Moo<'b, B>,
         result: impl Into<B>,
         op_dbg: impl AsRef<str>,
         test_mut: Side,
@@ -483,14 +483,14 @@ pub(super) mod big_math {
         };
         if test_mut.do_left() {
             let mut lhs = lhs.clone();
-            let res = op(Boo::from(&mut lhs), Boo::from(&rhs));
+            let res = op(Mob::from(&mut lhs), Mob::from(&rhs));
             let msg = build_msg_id("&mut", "&");
             validate_mut(res, &msg);
             assert_eq!(lhs, result, "assigned with {msg}");
         }
         if test_mut.do_left() {
             let mut lhs = lhs.clone();
-            let res = op(Boo::from(&mut lhs), Boo::from(rhs.clone()));
+            let res = op(Mob::from(&mut lhs), Mob::from(rhs.clone()));
             let msg = build_msg_id("&mut", "");
             validate_mut(res, &msg);
             assert_eq!(lhs, result, "assigned with {msg}");
@@ -498,29 +498,29 @@ pub(super) mod big_math {
 
         if test_mut.do_right() {
             let mut rhs = rhs.clone();
-            let res = op(Boo::from(&lhs), Boo::from(&mut rhs));
+            let res = op(Mob::from(&lhs), Mob::from(&mut rhs));
             let msg = build_msg_id("&", "&mut");
             validate_mut(res, &msg);
             assert_eq!(rhs, result, "assigned with {msg}");
         }
         if test_mut.do_right() {
             let mut rhs = rhs.clone();
-            let res = op(Boo::from(lhs.clone()), Boo::from(&mut rhs));
+            let res = op(Mob::from(lhs.clone()), Mob::from(&mut rhs));
             let msg = build_msg_id("", "&mut");
             validate_mut(res, &msg);
             assert_eq!(rhs, result, "assigned with {msg}");
         }
 
-        let res = op(Boo::from(&lhs), Boo::from(&rhs));
+        let res = op(Mob::from(&lhs), Mob::from(&rhs));
         validate_non_mut(res, &format!("res equals with {}", build_msg_id("&", "&")));
 
-        let res = op(Boo::from(lhs.clone()), Boo::from(&rhs));
+        let res = op(Mob::from(lhs.clone()), Mob::from(&rhs));
         validate_non_mut(res, &format!("res equals with {}", build_msg_id("", "&")));
 
-        let res = op(Boo::from(&lhs), Boo::from(rhs.clone()));
+        let res = op(Mob::from(&lhs), Mob::from(rhs.clone()));
         validate_non_mut(res, &format!("res equals with {}", build_msg_id("&", "")));
 
-        let res = op(Boo::from(lhs.clone()), Boo::from(rhs.clone()));
+        let res = op(Mob::from(lhs.clone()), Mob::from(rhs.clone()));
         validate_non_mut(res, &format!("res equals with {}", build_msg_id("", "")));
     }
 

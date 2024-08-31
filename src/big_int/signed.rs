@@ -3,7 +3,7 @@
 use crate::{
     big_int::digits::{Convert, Decomposable, Digit, Signed},
     ops::{DivMod, Pow, PowAssign},
-    util::boo::{Boo, Moo},
+    util::boo::{Mob, Moo},
     BigUInt,
 };
 
@@ -164,12 +164,12 @@ impl<'b, D: Digit> From<Moo<'b, BigInt<D>>> for MaybeSignedBoo<'b, D> {
         }
     }
 }
-impl<'b, D: Digit> From<Boo<'b, BigInt<D>>> for MaybeSignedBoo<'b, D> {
-    fn from(value: Boo<'b, BigInt<D>>) -> Self {
+impl<'b, D: Digit> From<Mob<'b, BigInt<D>>> for MaybeSignedBoo<'b, D> {
+    fn from(value: Mob<'b, BigInt<D>>) -> Self {
         match value {
-            Boo::Borrowed(it) => Self::Borrowed(Either::Left(it)),
-            Boo::Owned(it) => Self::Owned(Either::Left(it)),
-            Boo::BorrowedMut(it) => Self::BorrowedMut(it),
+            Mob::Borrowed(it) => Self::Borrowed(Either::Left(it)),
+            Mob::Owned(it) => Self::Owned(Either::Left(it)),
+            Mob::BorrowedMut(it) => Self::BorrowedMut(it),
         }
     }
 }
@@ -205,7 +205,7 @@ impl<'b, D: Digit> From<MaybeSignedBoo<'b, D>> for Moo<'b, BigInt<D>> {
         }
     }
 }
-impl<'b, D: Digit> From<MaybeSignedBoo<'b, D>> for Boo<'b, BigUInt<D>> {
+impl<'b, D: Digit> From<MaybeSignedBoo<'b, D>> for Mob<'b, BigUInt<D>> {
     fn from(value: MaybeSignedBoo<'b, D>) -> Self {
         match value {
             MaybeSignedBoo::BorrowedMut(it) => Self::BorrowedMut(&mut it.unsigned),
@@ -591,7 +591,7 @@ impl<D: Digit> BigInt<D> {
     pub(super) fn refer_to_abs<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
-        func: impl for<'u> FnOnce(Boo<'u, BigUInt<D>>, Boo<'u, BigUInt<D>>) -> Moo<'u, BigUInt<D>>,
+        func: impl for<'u> FnOnce(Mob<'u, BigUInt<D>>, Mob<'u, BigUInt<D>>) -> Moo<'u, BigUInt<D>>,
         new_sign: SigNum,
     ) -> Moo<'b, Self>
     where
@@ -604,8 +604,8 @@ impl<D: Digit> BigInt<D> {
         match (lhs, rhs) {
             (MaybeSignedBoo::BorrowedMut(borrow_mut), borrow) => {
                 let _ = func(
-                    Boo::BorrowedMut(&mut borrow_mut.unsigned),
-                    Boo::from(borrow),
+                    Mob::BorrowedMut(&mut borrow_mut.unsigned),
+                    Mob::from(borrow),
                 );
                 borrow_mut.signum = new_sign;
                 borrow_mut.recalc_sign();
@@ -613,15 +613,15 @@ impl<D: Digit> BigInt<D> {
             }
             (borrow, MaybeSignedBoo::BorrowedMut(borrow_mut)) => {
                 let _ = func(
-                    Boo::from(borrow),
-                    Boo::BorrowedMut(&mut borrow_mut.unsigned),
+                    Mob::from(borrow),
+                    Mob::BorrowedMut(&mut borrow_mut.unsigned),
                 );
                 borrow_mut.signum = new_sign;
                 borrow_mut.recalc_sign();
                 Moo::BorrowedMut(borrow_mut)
             }
             (lhs, rhs) => {
-                let owned = func(Boo::from(lhs), Boo::from(rhs)).expect_owned("no mut ref given");
+                let owned = func(Mob::from(lhs), Mob::from(rhs)).expect_owned("no mut ref given");
                 Moo::Owned(owned.with_sign(new_sign))
             }
         }
@@ -711,7 +711,7 @@ impl<D: Digit> BigInt<D> {
     pub(crate) fn mul_by_digit<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
-        B2: Into<Boo<'b2, D>>,
+        B2: Into<Mob<'b2, D>>,
     {
         // let lhs: MaybeSignedBoo<'_, D> = lhs.into();
         // let rhs: MaybeSignedBoo<'_, D> = rhs.into();
@@ -724,7 +724,7 @@ impl<D: Digit> BigInt<D> {
             lhs => {
                 let sign = lhs.signum();
                 Moo::Owned(
-                    BigUInt::mul_by_digit(Boo::from(lhs), rhs)
+                    BigUInt::mul_by_digit(Mob::from(lhs), rhs)
                         .expect_owned("no mut ref")
                         .with_sign(sign),
                 )
@@ -734,8 +734,8 @@ impl<D: Digit> BigInt<D> {
 
     pub(crate) fn mul_by_sign<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b, Self>>,
-        B2: Into<Boo<'b, SigNum>>,
+        B1: Into<Mob<'b, Self>>,
+        B2: Into<Mob<'b, SigNum>>,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
@@ -816,16 +816,16 @@ impl<D: Digit> BigInt<D> {
             }
             (MaybeSignedBoo::BorrowedMut(lhs), rhs) => {
                 let (_, r) =
-                    BigUInt::div_mod_euclid(Boo::BorrowedMut(&mut lhs.unsigned), Boo::from(rhs));
+                    BigUInt::div_mod_euclid(Mob::BorrowedMut(&mut lhs.unsigned), Mob::from(rhs));
                 (Moo::BorrowedMut(lhs), Moo::Owned(r.expect_owned("").into()))
             }
             (lhs, MaybeSignedBoo::BorrowedMut(rhs)) => {
                 let (q, _) =
-                    BigUInt::div_mod_euclid(Boo::from(lhs), Boo::BorrowedMut(&mut rhs.unsigned));
+                    BigUInt::div_mod_euclid(Mob::from(lhs), Mob::BorrowedMut(&mut rhs.unsigned));
                 (Moo::Owned(q.expect_owned("").into()), Moo::BorrowedMut(rhs))
             }
             (lhs, rhs) => {
-                let (q, r) = BigUInt::div_mod_euclid(Boo::from(lhs), Boo::from(rhs));
+                let (q, r) = BigUInt::div_mod_euclid(Mob::from(lhs), Mob::from(rhs));
                 (
                     Moo::Owned(q.expect_owned("").into()),
                     Moo::Owned(r.expect_owned("").into()),
@@ -878,14 +878,14 @@ impl<D: Digit> BigInt<D> {
             debug_assert!(!r.is_negative(), "non euclid shifted r:{} negative", *r);
         }
 
-        (q, Moo::from(Boo::from(MaybeSignedBoo::from(r))))
+        (q, Moo::from(Mob::from(MaybeSignedBoo::from(r))))
     }
 
     pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
+        B1: Into<Mob<'b1, Self>>,
         P: Decomposable<bool> + 'b2 + Signed + Clone,
-        B2: Into<Boo<'b2, P>>,
+        B2: Into<Mob<'b2, P>>,
     {
         let pow = pow.into();
         let lhs = lhs.into();
@@ -895,7 +895,7 @@ impl<D: Digit> BigInt<D> {
             Sign::Positive
         };
         match lhs {
-            Boo::BorrowedMut(lhs) => {
+            Mob::BorrowedMut(lhs) => {
                 let _ = BigUInt::pow::<'_, '_, '_, _, _, P>(&mut lhs.unsigned, pow);
                 lhs.signum = sign.into();
                 lhs.recalc_sign();

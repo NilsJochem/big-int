@@ -5,7 +5,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use crate::{
     big_int::{digits::Digit, math_algos::gcd::Gcd},
     ops::DivMod,
-    util::boo::{Boo, Moo},
+    util::boo::{Mob, Moo},
     BigIInt, BigUInt, SigNum,
 };
 
@@ -109,28 +109,28 @@ impl<D: Digit> Decimal<D> {
         std::mem::swap(self.numerator.abs_mut(), &mut self.denominator);
     }
 
-    fn split(value: Boo<'_, Self>) -> (Boo<'_, BigIInt<D>>, Boo<'_, BigUInt<D>>) {
+    fn split(value: Mob<'_, Self>) -> (Mob<'_, BigIInt<D>>, Mob<'_, BigUInt<D>>) {
         match value {
-            Boo::Owned(value) => (Boo::Owned(value.numerator), Boo::Owned(value.denominator)),
-            Boo::Borrowed(value) => (
-                Boo::Borrowed(&value.numerator),
-                Boo::Borrowed(&value.denominator),
+            Mob::Owned(value) => (Mob::Owned(value.numerator), Mob::Owned(value.denominator)),
+            Mob::Borrowed(value) => (
+                Mob::Borrowed(&value.numerator),
+                Mob::Borrowed(&value.denominator),
             ),
-            Boo::BorrowedMut(_) => panic!("can't split mut"),
+            Mob::BorrowedMut(_) => panic!("can't split mut"),
         }
     }
     fn add_same_denominator<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
         assert_eq!(lhs.denominator, rhs.denominator);
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+            (Mob::BorrowedMut(borrow_mut), borrow) | (borrow, Mob::BorrowedMut(borrow_mut)) => {
                 let (borrow_numerator, borrow_denominator) = Self::split(borrow);
                 *borrow_mut = Self::new(
                     BigIInt::add(&borrow_mut.numerator, borrow_numerator)
@@ -155,8 +155,8 @@ impl<D: Digit> Decimal<D> {
     }
     pub fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
@@ -164,16 +164,16 @@ impl<D: Digit> Decimal<D> {
 
         if lhs.denominator != rhs.denominator {
             let lhs_denominator = lhs.denominator.clone();
-            lhs.get_mut().extend(&rhs.denominator);
-            rhs.get_mut().extend(&lhs_denominator);
+            (*lhs).extend(&rhs.denominator);
+            (*rhs).extend(&lhs_denominator);
         }
         Self::add_same_denominator(lhs, rhs)
     }
 
     pub fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
@@ -182,15 +182,15 @@ impl<D: Digit> Decimal<D> {
     }
     pub fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+            (Mob::BorrowedMut(borrow_mut), borrow) | (borrow, Mob::BorrowedMut(borrow_mut)) => {
                 let (borrow_numerator, borrow_denominator) = Self::split(borrow);
                 *borrow_mut = Self::new(
                     BigIInt::mul(&borrow_mut.numerator, borrow_numerator)
@@ -217,8 +217,8 @@ impl<D: Digit> Decimal<D> {
     }
     pub fn div<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         let mut rhs = Moo::<Self>::from(rhs.into());

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
 name = "big-int"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 authors = ["Nils Jochem"]
 license = "MPL-2.0"
@@ -12,7 +12,9 @@ repository = "https://github.com/NilsJochem/big-int"
 rand = "0.8.5"
 derive_more = { version = "1.0.0", features = ["from"] }
 itertools = "0.13.0"
-common = { git = "ssh://git@github.com/NilsJochem/rust-common" }
+common = { git = "ssh://git@github.com/NilsJochem/rust-common", features = [
+	"boo",
+] }
 base64 = { version = "0.22.1", optional = true }
 cfg-if = "1.0.0"
 

@@ -6,7 +6,7 @@ use crate::{
         math_shortcuts::MathShortcut,
     },
     ops::{Pow, PowAssign},
-    util::boo::{Boo, Moo},
+    util::boo::{Mob, Moo},
     SigNum, Sign,
 };
 
@@ -625,16 +625,16 @@ use super::digits::Signed;
 
 trait TieBreaker {
     fn decide<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Boo<'b, BigInt<D>>);
+        lhs: Mob<'b, BigInt<D>>,
+        rhs: Mob<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Mob<'b, BigInt<D>>);
 }
 struct TieSmaller;
 impl TieBreaker for TieSmaller {
     fn decide<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Boo<'b, BigInt<D>>) {
+        lhs: Mob<'b, BigInt<D>>,
+        rhs: Mob<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Mob<'b, BigInt<D>>) {
         if *lhs <= *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -645,9 +645,9 @@ impl TieBreaker for TieSmaller {
 struct TieBigger;
 impl TieBreaker for TieBigger {
     fn decide<'b, D: Digit>(
-        lhs: Boo<'b, BigInt<D>>,
-        rhs: Boo<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Boo<'b, BigInt<D>>) {
+        lhs: Mob<'b, BigInt<D>>,
+        rhs: Mob<'b, BigInt<D>>,
+    ) -> (BigInt<D>, Mob<'b, BigInt<D>>) {
         if *lhs > *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -999,9 +999,9 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    pub(super) fn assert_pair_valid<T>(lhs: &Boo<'_, T>, rhs: &Boo<'_, T>) {
+    pub(super) fn assert_pair_valid<T>(lhs: &Mob<'_, T>, rhs: &Mob<'_, T>) {
         assert!(
-            !matches!(lhs, Boo::BorrowedMut(_)) || !matches!(rhs, Boo::BorrowedMut(_)),
+            !matches!(lhs, Mob::BorrowedMut(_)) || !matches!(rhs, Mob::BorrowedMut(_)),
             "can't have to Borrow_mut's"
         );
     }
@@ -1011,22 +1011,22 @@ impl<D: Digit> BigInt<D> {
         func: impl FnOnce(&mut Self, &Self),
     ) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         T: TieBreaker,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
         Self::assert_pair_valid(&lhs, &rhs);
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+            (Mob::BorrowedMut(borrow_mut), borrow) | (borrow, Mob::BorrowedMut(borrow_mut)) => {
                 func(borrow_mut, &borrow);
                 Moo::BorrowedMut(borrow_mut)
             }
-            (Boo::Borrowed(borrowed), Boo::Owned(mut owned))
-            | (Boo::Owned(mut owned), Boo::Borrowed(borrowed)) => {
+            (Mob::Borrowed(borrowed), Mob::Owned(mut owned))
+            | (Mob::Owned(mut owned), Mob::Borrowed(borrowed)) => {
                 func(&mut owned, borrowed);
                 Moo::Owned(owned)
             }
@@ -1040,8 +1040,8 @@ impl<D: Digit> BigInt<D> {
     // math
     pub(super) fn bitor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
@@ -1052,8 +1052,8 @@ impl<D: Digit> BigInt<D> {
     }
     pub(super) fn bitxor<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieBigger>(
@@ -1065,8 +1065,8 @@ impl<D: Digit> BigInt<D> {
 
     pub(super) fn bitand<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
         Self::refer_direct::<'_, '_, '_, _, _, TieSmaller>(
@@ -1078,8 +1078,8 @@ impl<D: Digit> BigInt<D> {
 
     pub(super) fn shl<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, usize>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, usize>>,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
@@ -1105,8 +1105,8 @@ impl<D: Digit> BigInt<D> {
     }
     pub(super) fn shr<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, usize>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, usize>>,
     {
         Self::shr_internal(lhs, rhs).0
     }
@@ -1116,8 +1116,8 @@ impl<D: Digit> BigInt<D> {
         rhs: B2,
     ) -> (Moo<'b, Self>, Self)
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, usize>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, usize>>,
     {
         let mut lhs = Moo::<Self>::from(lhs.into());
         let rhs = rhs.into().copied();
@@ -1153,12 +1153,12 @@ impl<D: Digit> BigInt<D> {
     }
     pub(crate) fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
         Self::assert_pair_valid(&lhs, &rhs);
 
         super::math_shortcuts::try_all!(lhs, rhs, super::math_shortcuts::add::Zero,);
@@ -1167,11 +1167,11 @@ impl<D: Digit> BigInt<D> {
     }
     pub(crate) fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
 
         Self::assert_pair_valid(&lhs, &rhs);
         assert!(*lhs >= *rhs, "result would be negative");
@@ -1180,11 +1180,11 @@ impl<D: Digit> BigInt<D> {
         }
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(lhs), rhs) => {
+            (Mob::BorrowedMut(lhs), rhs) => {
                 super::math_algos::sub::assign_smaller(lhs, &rhs);
                 Moo::BorrowedMut(lhs)
             }
-            (lhs, Boo::BorrowedMut(borrowed)) => {
+            (lhs, Mob::BorrowedMut(borrowed)) => {
                 let old_rhs = std::mem::replace(borrowed, lhs.cloned()); // lhs -> rhs, rhs -> old_rhs
                 super::math_algos::sub::assign_smaller(borrowed, &old_rhs);
                 Moo::BorrowedMut(borrowed)
@@ -1199,11 +1199,11 @@ impl<D: Digit> BigInt<D> {
     }
     pub(crate) fn mul_by_digit<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, D>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, D>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
         let rhs: D = rhs.into().copied();
 
         if lhs.is_zero() {
@@ -1225,12 +1225,12 @@ impl<D: Digit> BigInt<D> {
 
     pub(crate) fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
         Self::assert_pair_valid(&lhs, &rhs);
 
         super::math_shortcuts::try_all!(
@@ -1242,7 +1242,7 @@ impl<D: Digit> BigInt<D> {
         );
 
         match (lhs, rhs) {
-            (Boo::BorrowedMut(borrow_mut), borrow) | (borrow, Boo::BorrowedMut(borrow_mut)) => {
+            (Mob::BorrowedMut(borrow_mut), borrow) | (borrow, Mob::BorrowedMut(borrow_mut)) => {
                 *borrow_mut = super::math_algos::mul::naive(borrow_mut, &borrow);
                 Moo::BorrowedMut(borrow_mut)
             }
@@ -1251,19 +1251,19 @@ impl<D: Digit> BigInt<D> {
     }
     pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
+        B1: Into<Mob<'b1, Self>>,
         P: Decomposable<bool> + 'b2 + super::digits::Signed + Clone,
-        B2: Into<Boo<'b2, P>>,
+        B2: Into<Mob<'b2, P>>,
         D: 'b1 + 'b2,
     {
-        let pow: Boo<P> = pow.into();
+        let pow: Mob<P> = pow.into();
         assert!(
-            !matches!(pow, Boo::BorrowedMut(_)),
+            !matches!(pow, Mob::BorrowedMut(_)),
             "will not assign to power"
         );
         assert!(!pow.signum().is_negative(), "can't pow ints by negatives");
 
-        let lhs: Boo<_> = lhs.into();
+        let lhs: Mob<_> = lhs.into();
 
         if pow.signum().is_zero() {
             return Moo::from_with_value(lhs, Self::ONE);
@@ -1285,7 +1285,7 @@ impl<D: Digit> BigInt<D> {
 
         for bit in pow.le_digits() {
             if bit {
-                *out.get_mut() *= &x;
+                *out *= &x;
             }
             x = &x * &x;
         }
@@ -1294,16 +1294,16 @@ impl<D: Digit> BigInt<D> {
 
     pub(crate) fn div_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
     {
         Self::div_mod_euclid(lhs, rhs).0
     }
     #[allow(dead_code)]
     pub(crate) fn rem_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, Self>
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
     {
         Self::div_mod_euclid(lhs, rhs).1
     }
@@ -1312,12 +1312,12 @@ impl<D: Digit> BigInt<D> {
         rhs: B2,
     ) -> (Moo<'b1, Self>, Moo<'b2, Self>)
     where
-        B1: Into<Boo<'b1, Self>>,
-        B2: Into<Boo<'b2, Self>>,
+        B1: Into<Mob<'b1, Self>>,
+        B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let lhs: Boo<'_, Self> = lhs.into();
-        let rhs: Boo<'_, Self> = rhs.into();
+        let lhs: Mob<'_, Self> = lhs.into();
+        let rhs: Mob<'_, Self> = rhs.into();
         // here both can be allowed to be &muts in which case *lhs = lhs/rhs, *rhs = lhs%rhs
         // Self::assert_pair_valid(&lhs, &rhs);
 

@@ -9,7 +9,7 @@ pub use big_int::{
 };
 
 mod util {
-    pub mod boo;
+    pub use common::boo;
     pub mod rng;
 }
 pub mod iter {
