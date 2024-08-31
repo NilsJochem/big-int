@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Nils Jochem
 // SPDX-License-Identifier: MPL-2.0
-use crate::util::boo::{Boo, Moo};
-
 use crate::{
     big_int::digits::{Convert, Decomposable, Digit, Signed},
+    ops::{DivMod, Pow, PowAssign},
+    util::boo::{Boo, Moo},
     BigUInt,
 };
 
@@ -137,7 +137,7 @@ impl<D: Digit> EitherGetter<D> for Either<BigInt<D>, BigUInt<D>> {
 }
 
 #[derive(Debug, derive_more::From)]
-pub enum MaybeSignedBoo<'b, D: Digit> {
+pub(crate) enum MaybeSignedBoo<'b, D: Digit> {
     BorrowedMut(&'b mut BigInt<D>),
     Borrowed(Either<&'b BigInt<D>, &'b BigUInt<D>>),
     Owned(Either<BigInt<D>, BigUInt<D>>),
@@ -699,35 +699,8 @@ impl<D: Digit> BigInt<D> {
         let new_sign = lhs.signum() * rhs.signum();
         Self::refer_to_abs(lhs, rhs, |a, b| BigUInt::mul(a, b), new_sign)
     }
-    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
-    where
-        B1: Into<MaybeSignedBoo<'b1, D>>,
-        P: Decomposable<bool> + 'b2 + Signed + Clone,
-        B2: Into<Boo<'b2, P>>,
-    {
-        let pow = pow.into();
-        let lhs = lhs.into();
-        let sign = if lhs.signum().is_negative() && pow.le_digits().next().is_some_and(|it| it) {
-            Sign::Negative
-        } else {
-            Sign::Positive
-        };
-        match lhs {
-            MaybeSignedBoo::BorrowedMut(lhs) => {
-                let _ = BigUInt::pow::<'_, '_, '_, _, _, P>(&mut lhs.unsigned, pow);
-                lhs.signum = sign.into();
-                lhs.recalc_sign();
-                Moo::BorrowedMut(lhs)
-            }
-            lhs => Moo::Owned(
-                BigUInt::pow::<'_, '_, '_, _, _, P>(Boo::from(lhs), pow)
-                    .expect_owned("no mut ref")
-                    .with_sign(sign),
-            ),
-        }
-    }
 
-    pub(crate) fn div_euclid<'b1, 'b2: 'b1, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
+    pub(crate) fn div<'b1, 'b2: 'b1, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -737,14 +710,14 @@ impl<D: Digit> BigInt<D> {
 
         match (lhs, rhs) {
             (lhs, MaybeSignedBoo::BorrowedMut(rhs)) => {
-                let (result, _) = Self::div_mod_euclid(lhs, std::mem::take(rhs));
-                Moo::from_with_value(rhs, result.expect_owned("did'nt hat mut ref"))
+                let (result, _) = Self::div_mod(lhs, std::mem::take(rhs));
+                Moo::from_with_value(rhs, result.expect_owned("didn't hat mut ref"))
             }
-            (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).0,
+            (lhs, rhs) => Self::div_mod(lhs, rhs).0,
         }
     }
     #[allow(dead_code)]
-    pub(crate) fn rem_euclid<'b2, 'b1: 'b2, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, BigUInt<D>>
+    pub(crate) fn rem<'b2, 'b1: 'b2, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -754,16 +727,17 @@ impl<D: Digit> BigInt<D> {
 
         match (lhs, rhs) {
             (MaybeSignedBoo::BorrowedMut(lhs), rhs) => {
-                let (_, result) = Self::div_mod_euclid(std::mem::take(lhs), rhs);
-                Moo::from_with_value(&mut lhs.unsigned, result.expect_owned("did'nt hat mut ref"))
+                let (_, result) = Self::div_mod(std::mem::take(lhs), rhs);
+                *lhs = result.expect_owned("didn't hat mut ref");
+                Moo::from(lhs)
             }
-            (lhs, rhs) => Self::div_mod_euclid(lhs, rhs).1,
+            (lhs, rhs) => Self::div_mod(lhs, rhs).1,
         }
     }
-    pub fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+    pub(crate) fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
-    ) -> (Moo<'b1, Self>, Moo<'b2, BigUInt<D>>)
+    ) -> (Moo<'b1, Self>, Moo<'b2, Self>)
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -774,8 +748,8 @@ impl<D: Digit> BigInt<D> {
         #[cfg(debug_assertions)]
         let (n, d) = (lhs.cloned(), rhs.cloned());
 
-        let map_r = lhs.signum().is_negative().then(|| rhs.cloned_abs());
         let signum_q = lhs.signum() * rhs.signum();
+        let signum_r = lhs.signum();
 
         let (mut q, mut r) = match (lhs, rhs) {
             (MaybeSignedBoo::BorrowedMut(lhs), MaybeSignedBoo::BorrowedMut(rhs)) => {
@@ -803,15 +777,11 @@ impl<D: Digit> BigInt<D> {
         q.recalc_sign();
         r.recalc_sign();
         *q *= signum_q;
-
-        if let Some(d) = map_r.filter(|_| !r.is_zero()) {
-            *q += BigUInt::from(1u8).with_sign(signum_q.into());
-            *r = d - &*r;
-        }
+        *r *= signum_r;
 
         debug_assert!(
-            !r.is_negative() && r.unsigned.cmp(&d).is_lt(),
-            "0 <= r < |d| failed for \nr: {}, d: {d}",
+            r.unsigned.cmp(&d).is_lt(),
+            "|r| < |d| failed for \nr: {}, d: {d}",
             *r
         );
         debug_assert_eq!(
@@ -821,7 +791,64 @@ impl<D: Digit> BigInt<D> {
             *q,
             *r
         );
+        (q, r)
+    }
+
+    pub(crate) fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+        lhs: B1,
+        rhs: B2,
+    ) -> (Moo<'b1, Self>, Moo<'b2, BigUInt<D>>)
+    where
+        B1: Into<MaybeSignedBoo<'b1, D>>,
+        B2: Into<MaybeSignedBoo<'b2, D>>,
+    {
+        let lhs: MaybeSignedBoo<'_, D> = lhs.into();
+        let rhs: MaybeSignedBoo<'_, D> = rhs.into();
+
+        let map_r = lhs.signum().is_negative().then(|| rhs.cloned_abs());
+        let signum_q = lhs.signum() * rhs.signum();
+
+        let (mut q, mut r) = Self::div_mod(lhs, rhs);
+
+        if let Some(d) = map_r.filter(|_| !r.is_zero()) {
+            *q += BigUInt::from(1u8).with_sign(signum_q.into());
+
+            debug_assert!(r.is_negative(), "pre euclid shifted r:{} not negative", *r);
+            *r = d + &*r;
+            debug_assert!(r.is_positive(), "post euclid shifted r:{} not positve", *r);
+        } else {
+            debug_assert!(!r.is_negative(), "non euclid shifted r:{} negative", *r);
+        }
+
         (q, Moo::from(Boo::from(MaybeSignedBoo::from(r))))
+    }
+
+    pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    where
+        B1: Into<Boo<'b1, Self>>,
+        P: Decomposable<bool> + 'b2 + Signed + Clone,
+        B2: Into<Boo<'b2, P>>,
+    {
+        let pow = pow.into();
+        let lhs = lhs.into();
+        let sign = if lhs.signum().is_negative() && pow.le_digits().next().is_some_and(|it| it) {
+            Sign::Negative
+        } else {
+            Sign::Positive
+        };
+        match lhs {
+            Boo::BorrowedMut(lhs) => {
+                let _ = BigUInt::pow::<'_, '_, '_, _, _, P>(&mut lhs.unsigned, pow);
+                lhs.signum = sign.into();
+                lhs.recalc_sign();
+                Moo::BorrowedMut(lhs)
+            }
+            lhs => Moo::Owned(
+                BigUInt::pow::<'_, '_, '_, _, _, P>(MaybeSignedBoo::from(lhs), pow)
+                    .expect_owned("no mut ref")
+                    .with_sign(sign),
+            ),
+        }
     }
 }
 
@@ -885,18 +912,8 @@ impl<D: Digit> Neg for BigInt<D> {
         self
     }
 }
-impl<D: Digit> MulAssign<SigNum> for BigInt<D> {
-    fn mul_assign(&mut self, rhs: SigNum) {
-        Self::mul_by_sign(self, rhs).expect_mut("did give &mut, shouldn't get result");
-    }
-}
-impl<D: Digit> MulAssign<&SigNum> for BigInt<D> {
-    fn mul_assign(&mut self, rhs: &SigNum) {
-        Self::mul_by_sign(self, rhs).expect_mut("did give &mut, shouldn't get result");
-    }
-}
 implBigMath!(
-    // assign
+    assign
     MulAssign,
     mul_assign,
     Mul,
@@ -905,45 +922,96 @@ implBigMath!(
     BigInt<D>,
     SigNum
 );
-implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, BigInt<D>, D);
+implBigMath!(
+    assign
+    MulAssign,
+    mul_assign,
+    Mul,
+    mul,
+    mul_by_digit,
+    BigInt<D>,
+    D
+);
 implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
-implBigMath!(DivAssign, div_assign, Div, div, div_euclid);
+implBigMath!(DivAssign, div_assign, Div, div);
+implBigMath!(RemAssign, rem_assign, Rem, rem);
 
-// manual impl of rem because of the always positive output
-// implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
-impl<D: Digit> Rem for BigInt<D> {
-    type Output = BigUInt<D>;
-    fn rem(self, rhs: Self) -> Self::Output {
-        Self::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+// manual impl of Pow as RHS is generic
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for BigInt<D> {
+    type Output = Self;
+
+    fn pow(self, rhs: P) -> Self::Output {
+        Self::pow(self, rhs).expect_owned("no mut ref given")
     }
 }
-impl<D: Digit> Rem<&Self> for BigInt<D> {
-    type Output = BigUInt<D>;
-    fn rem(self, rhs: &Self) -> Self::Output {
-        Self::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for &BigInt<D> {
+    type Output = BigInt<D>;
+
+    fn pow(self, rhs: P) -> Self::Output {
+        BigInt::pow(self, rhs).expect_owned("no mut ref given")
     }
 }
-impl<D: Digit> Rem<BigInt<D>> for &BigInt<D> {
-    type Output = BigUInt<D>;
-    fn rem(self, rhs: BigInt<D>) -> Self::Output {
-        BigInt::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> PowAssign<P> for BigInt<D> {
+    fn pow_assign(&mut self, rhs: P) {
+        Self::pow(self, rhs).expect_mut("mut ref given");
     }
 }
-impl<D: Digit> Rem for &BigInt<D> {
-    type Output = BigUInt<D>;
-    fn rem(self, rhs: &BigInt<D>) -> Self::Output {
-        BigInt::rem_euclid(self, rhs).expect_owned("didn't give &mut, should get result")
+
+macro_rules! implBigDiv {
+    (funcs, $rhs:ident$(<$gen:ident>)?) => {
+        fn div_mod(self, rhs: $rhs$(<$gen>)?) -> (Self::Signed, Self::Signed) {
+            implBigDiv!(body, div_mod, self, rhs)
+        }
+        fn  div_mod_euclid(self, rhs: $rhs$(<$gen>)?) -> (Self::Signed, Self::Unsigned) {
+            implBigDiv!(body, div_mod_euclid, self, rhs)
+        }
+    };
+    (funcs, &$rhs:ident$(<$gen:ident>)?) => {
+        fn div_mod(self, rhs: &$rhs$(<$gen>)?) -> (Self::Signed, Self::Signed) {
+            implBigDiv!(body, div_mod, self, rhs)
+        }
+        fn  div_mod_euclid(self, rhs: &$rhs$(<$gen>)?) -> (Self::Signed, Self::Unsigned) {
+            implBigDiv!(body, div_mod_euclid, self, rhs)
+        }
+    };
+    (body, $func: ident, $lhs: ident, $rhs:ident) => {{
+        let (q, r) = BigInt::$func($lhs, $rhs);
+        (
+            q.expect_owned("didn't give &mut, should get result"),
+            r.expect_owned("didn't give &mut, should get result"),
+        )
+    }};
+    ($lhs:ident$(<$l_gen:ident>)?, $rhs:ident$(<$r_gen:ident>)?) => {
+        impl<D: Digit> DivMod<$rhs$(<$r_gen>)?> for $lhs$(<$l_gen>)? {
+            type Signed = BigInt<D>;
+            type Unsigned = BigUInt<D>;
+
+            implBigDiv!(funcs, $rhs$(<$r_gen>)?);
+        }
+        impl<D: Digit> DivMod<&$rhs$(<$r_gen>)?> for $lhs$(<$l_gen>)? {
+            type Signed = BigInt<D>;
+            type Unsigned = BigUInt<D>;
+
+            implBigDiv!(funcs, &$rhs$(<$r_gen>)?);
+        }
+        impl<D: Digit> DivMod<$rhs$(<$r_gen>)?> for &$lhs$(<$l_gen>)? {
+            type Signed = BigInt<D>;
+            type Unsigned = BigUInt<D>;
+
+            implBigDiv!(funcs, $rhs$(<$r_gen>)?);
+        }
+        impl<D: Digit> DivMod<&$rhs$(<$r_gen>)?> for &$lhs$(<$l_gen>)? {
+            type Signed = BigInt<D>;
+            type Unsigned = BigUInt<D>;
+
+            implBigDiv!(funcs, &$rhs$(<$r_gen>)?);
+        }
     }
 }
-impl<D: Digit> RemAssign<Self> for BigInt<D> {
-    fn rem_assign(&mut self, rhs: Self) {
-        Self::rem_euclid(self, rhs).expect_mut("did give &mut, shouldn't get result");
-    }
-}
-impl<D: Digit> RemAssign<&Self> for BigInt<D> {
-    fn rem_assign(&mut self, rhs: &Self) {
-        Self::rem_euclid(self, rhs).expect_mut("did give &mut, shouldn't get result");
-    }
-}
+
+implBigDiv!(BigInt<D>, BigInt<D>);
+implBigDiv!(BigUInt<D>, BigInt<D>);
+implBigDiv!(BigInt<D>, BigUInt<D>);
+implBigDiv!(BigUInt<D>, BigUInt<D>);

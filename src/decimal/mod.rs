@@ -4,6 +4,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{
     big_int::{digits::Digit, math_algos::gcd::Gcd},
+    ops::DivMod,
     util::boo::{Boo, Moo},
     BigIInt, BigUInt, SigNum,
 };
@@ -65,20 +66,12 @@ impl<D: Digit> Decimal<D> {
     }
 
     pub fn div_mod_euclid(self) -> (BigIInt<D>, BigUInt<D>) {
-        let (q, r) = BigIInt::div_mod_euclid(self.numerator, BigIInt::from(self.denominator));
-        (
-            q.expect_owned("no mut given"),
-            r.expect_owned("no mut given"),
-        )
+        self.numerator.div_mod_euclid(self.denominator)
     }
 
     pub fn round(self) -> BigIInt<D> {
         let d = self.denominator;
-        let (q, r) = BigIInt::div_mod_euclid(self.numerator, &d);
-        let (q, r) = (
-            q.expect_owned("no mut given"),
-            r.expect_owned("no mut given"),
-        );
+        let (q, r) = self.numerator.div_mod_euclid(&d);
         if r * D::from(2u8) > d {
             q + BigIInt::ONE
         } else {

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use crate::{
     big_int::digits::{Digit, Wide},
-    BigUInt, Sign,
+    BigUInt,
 };
 use itertools::Itertools;
 
@@ -239,7 +239,7 @@ pub mod div {
     }
 }
 pub mod gcd {
-    use crate::{BigIInt, BigUInt};
+    use crate::{ops::DivMod, BigIInt, BigUInt};
 
     use super::*;
 
@@ -261,13 +261,11 @@ pub mod gcd {
         };
 
         while !new.r.is_zero() {
-            let (qoutient, remainder) = BigIInt::div_mod_euclid(old.r, &new.r);
+            let (qoutient, remainder) = old.r.div_mod_euclid(&new.r);
 
             let next = GCDHelper {
-                r: remainder
-                    .expect_owned("no mut ref was given")
-                    .with_sign(Sign::Positive),
-                s: old.s - qoutient.expect_owned("no mut ref was given") * &new.s,
+                r: BigIInt::from(remainder),
+                s: old.s - qoutient * &new.s,
             };
 
             old = new;

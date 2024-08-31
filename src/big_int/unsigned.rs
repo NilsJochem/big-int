@@ -5,6 +5,7 @@ use crate::{
         digits::{Convert, Decomposable, Digit, Wide},
         math_shortcuts::MathShortcut,
     },
+    ops::{Pow, PowAssign},
     util::boo::{Boo, Moo},
     BigIInt, SigNum, Sign,
 };
@@ -533,6 +534,11 @@ impl<D: Digit> FromStr for BigInt<D> {
 }
 
 // Into traits
+impl<D: Digit> Signed for BigInt<D> {
+    fn signum(&self) -> SigNum {
+        self.signum()
+    }
+}
 impl<D: Digit> Convert<usize> for BigInt<D> {
     fn try_into(&self) -> Option<usize> {
         Some(D::try_combine(self.digits.iter().copied()).unwrap())
@@ -619,6 +625,8 @@ pub mod radix {
     }
 }
 use radix::Radix;
+
+use super::digits::Signed;
 
 trait TieBreaker {
     fn decide<'b, D: Digit>(
@@ -1253,7 +1261,7 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Moo::Owned(super::math_algos::mul::naive(&lhs, &rhs)),
         }
     }
-    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
         B1: Into<Boo<'b1, Self>>,
         P: Decomposable<bool> + 'b2 + super::digits::Signed + Clone,
@@ -1406,3 +1414,24 @@ implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
 implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigInt<D>);
 implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
+
+// manual impl of Pow as RHS is generic
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for BigInt<D> {
+    type Output = Self;
+
+    fn pow(self, rhs: P) -> Self::Output {
+        Self::pow(self, rhs).expect_owned("no mut ref given")
+    }
+}
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for &BigInt<D> {
+    type Output = BigInt<D>;
+
+    fn pow(self, rhs: P) -> Self::Output {
+        BigInt::pow(self, rhs).expect_owned("no mut ref given")
+    }
+}
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> PowAssign<P> for BigInt<D> {
+    fn pow_assign(&mut self, rhs: P) {
+        Self::pow(self, rhs).expect_mut("mut ref given");
+    }
+}
