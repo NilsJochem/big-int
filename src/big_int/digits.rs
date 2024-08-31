@@ -309,10 +309,15 @@ impl Decomposable<u8> for u64 {
         self.to_le_bytes().into_iter()
     }
 }
+const USIZE_BYTES: usize = usize::BITS as usize / 8;
 impl CombineTo<usize> for u8 {
-    fn try_combine(iter: impl Iterator<Item = Self>) -> Option<usize> {
-        let bytes: [Self; usize::BITS as usize / 8] = iter.collect::<Vec<_>>().try_into().ok()?;
-        Some(usize::from_le_bytes(bytes))
+    fn try_combine(mut iter: impl Iterator<Item = Self>) -> Option<usize> {
+        let mut bytes = [0; USIZE_BYTES];
+        for (place, byte) in bytes.iter_mut().zip(iter.by_ref()) {
+            *place = byte;
+        }
+        iter.all(|it| it == 0)
+            .then_some(usize::from_le_bytes(bytes))
     }
 }
 impl CombineTo<usize> for u16 {
@@ -590,6 +595,41 @@ mod tests {
             assert_eq!(
                 0x7766_5544_3322_1100usize.split_le(),
                 (HalfSize(0x3322_1100), HalfSize(0x7766_5544))
+            );
+        }
+    }
+    mod combine {
+        use super::*;
+        #[test]
+        fn u8() {
+            assert_eq!(Convert::<usize>::try_into(&0u8), Some(0));
+            assert_eq!(Convert::<usize>::try_into(&0xffu8), Some(0xff));
+        }
+
+        #[test]
+        #[cfg(target_pointer_width = "64")]
+        fn iter() {
+            assert_eq!(
+                CombineTo::<usize>::try_combine(
+                    [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter()
+                ),
+                Some(0x8877_6655_4433_2211)
+            );
+            assert_eq!(
+                CombineTo::<usize>::try_combine(
+                    [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0].into_iter()
+                ),
+                Some(0x8877_6655_4433_2211)
+            );
+        }
+        #[test]
+        #[cfg(target_pointer_width = "64")]
+        fn iter_overflow() {
+            assert_eq!(
+                CombineTo::<usize>::try_combine(
+                    [0x11u8, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99].into_iter()
+                ),
+                None
             );
         }
     }

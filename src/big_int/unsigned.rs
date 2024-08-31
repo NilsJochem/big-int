@@ -541,7 +541,7 @@ impl<D: Digit> Signed for BigInt<D> {
 }
 impl<D: Digit> Convert<usize> for BigInt<D> {
     fn try_into(&self) -> Option<usize> {
-        Some(D::try_combine(self.digits.iter().copied()).unwrap())
+        D::try_combine(self.digits.iter().copied())
     }
 }
 impl<D: Digit> Decomposable<D> for BigInt<D> {
