@@ -1081,7 +1081,7 @@ impl<D: Digit> BigInt<D> {
         B1: Into<Mob<'b1, Self>>,
         B2: Into<Mob<'b2, usize>>,
     {
-        let mut lhs = Moo::<Self>::from(lhs.into());
+        let mut lhs = Moo::<Self>::from_mob_cloned(lhs.into());
         let rhs = rhs.into().copied();
 
         let partial = rhs % D::BASIS_POW;
@@ -1119,7 +1119,7 @@ impl<D: Digit> BigInt<D> {
         B1: Into<Mob<'b1, Self>>,
         B2: Into<Mob<'b2, usize>>,
     {
-        let mut lhs = Moo::<Self>::from(lhs.into());
+        let mut lhs = Moo::<Self>::from_mob_cloned(lhs.into());
         let rhs = rhs.into().copied();
 
         let partial = rhs % D::BASIS_POW;
@@ -1207,12 +1207,12 @@ impl<D: Digit> BigInt<D> {
         let rhs: D = rhs.into().copied();
 
         if lhs.is_zero() {
-            return lhs.into();
+            return Moo::from_mob_cloned(lhs);
         }
         if rhs.eq_u8(0) {
             return Moo::from_with_value(lhs, Self::default());
         }
-        let mut lhs = Moo::from(lhs);
+        let mut lhs = Moo::from_mob_cloned(lhs);
         if rhs.eq_u8(1) {
             return lhs;
         }
@@ -1269,7 +1269,7 @@ impl<D: Digit> BigInt<D> {
             return Moo::from_with_value(lhs, Self::ONE);
         }
         if lhs.is_zero() {
-            return lhs.into();
+            return Moo::from_mob_cloned(lhs);
         }
         if lhs.is_power_of_two() {
             let l_pow = lhs.digits(2) - 1;
@@ -1280,7 +1280,7 @@ impl<D: Digit> BigInt<D> {
             }
         }
 
-        let mut out: Moo<Self> = Moo::from(lhs);
+        let mut out: Moo<Self> = Moo::from_mob_cloned(lhs);
         let mut x = std::mem::replace(&mut *out, Self::ONE);
 
         for bit in pow.le_digits() {

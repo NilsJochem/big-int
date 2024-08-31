@@ -138,7 +138,7 @@ impl<D: Digit> EitherGetter<D> for Either<BigInt<D>, BigUInt<D>> {
 }
 
 #[derive(Debug, derive_more::From)]
-pub(crate) enum MaybeSignedBoo<'b, D: Digit> {
+pub enum MaybeSignedBoo<'b, D: Digit> {
     BorrowedMut(&'b mut BigInt<D>),
     Borrowed(Either<&'b BigInt<D>, &'b BigUInt<D>>),
     Owned(Either<BigInt<D>, BigUInt<D>>),
@@ -170,6 +170,41 @@ impl<'b, D: Digit> From<Mob<'b, BigInt<D>>> for MaybeSignedBoo<'b, D> {
             Mob::Borrowed(it) => Self::Borrowed(Either::Left(it)),
             Mob::Owned(it) => Self::Owned(Either::Left(it)),
             Mob::BorrowedMut(it) => Self::BorrowedMut(it),
+        }
+    }
+}
+impl<'b, D: Digit> TryFrom<Moo<'b, BigUInt<D>>> for MaybeSignedBoo<'b, D> {
+    type Error = &'b mut BigUInt<D>;
+    fn try_from(value: Moo<'b, BigUInt<D>>) -> Result<Self, Self::Error> {
+        match value {
+            Moo::Owned(it) => Ok(Self::Owned(Either::Right(it))),
+            Moo::BorrowedMut(it) => Err(it),
+        }
+    }
+}
+impl<'b, D: Digit> TryFrom<Mob<'b, BigUInt<D>>> for MaybeSignedBoo<'b, D> {
+    type Error = &'b mut BigUInt<D>;
+    fn try_from(value: Mob<'b, BigUInt<D>>) -> Result<Self, Self::Error> {
+        match value {
+            Mob::Borrowed(it) => Ok(Self::Borrowed(Either::Right(it))),
+            Mob::Owned(it) => Ok(Self::Owned(Either::Right(it))),
+            Mob::BorrowedMut(it) => Err(it),
+        }
+    }
+}
+impl<'b, D: Digit> From<common::boo::Boo<'b, BigInt<D>>> for MaybeSignedBoo<'b, D> {
+    fn from(value: common::boo::Boo<'b, BigInt<D>>) -> Self {
+        match value {
+            common::boo::Boo::Borrowed(it) => Self::Borrowed(Either::Left(it)),
+            common::boo::Boo::Owned(it) => Self::Owned(Either::Left(it)),
+        }
+    }
+}
+impl<'b, D: Digit> From<common::boo::Boo<'b, BigUInt<D>>> for MaybeSignedBoo<'b, D> {
+    fn from(value: common::boo::Boo<'b, BigUInt<D>>) -> Self {
+        match value {
+            common::boo::Boo::Borrowed(it) => Self::Borrowed(Either::Right(it)),
+            common::boo::Boo::Owned(it) => Self::Owned(Either::Right(it)),
         }
     }
 }
@@ -627,7 +662,7 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    pub(crate) fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub fn add<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -660,7 +695,7 @@ impl<D: Digit> BigInt<D> {
         let new_sign = lhs.signum();
         Self::refer_to_abs(lhs, rhs, |a, b| BigUInt::add(a, b), new_sign)
     }
-    pub(crate) fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub fn sub<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -708,7 +743,7 @@ impl<D: Digit> BigInt<D> {
         either
     }
 
-    pub(crate) fn mul_by_digit<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub fn mul_by_digit<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<Mob<'b2, D>>,
@@ -732,12 +767,12 @@ impl<D: Digit> BigInt<D> {
         }
     }
 
-    pub(crate) fn mul_by_sign<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub fn mul_by_sign<'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<Mob<'b, Self>>,
         B2: Into<Mob<'b, SigNum>>,
     {
-        let mut lhs = Moo::<Self>::from(lhs.into());
+        let mut lhs = Moo::<Self>::from_mob_cloned(lhs.into());
         let rhs = rhs.into().copied();
         if rhs == SigNum::Zero {
             *lhs = Self::ZERO;
@@ -746,7 +781,7 @@ impl<D: Digit> BigInt<D> {
         }
         lhs
     }
-    pub(crate) fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
+    pub fn mul<'b, 'b1: 'b, 'b2: 'b, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -758,7 +793,7 @@ impl<D: Digit> BigInt<D> {
         Self::refer_to_abs(lhs, rhs, |a, b| BigUInt::mul(a, b), new_sign)
     }
 
-    pub(crate) fn div<'b1, 'b2: 'b1, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
+    pub fn div<'b1, 'b2: 'b1, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b1, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -774,8 +809,7 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Self::div_mod(lhs, rhs).0,
         }
     }
-    #[allow(dead_code)]
-    pub(crate) fn rem<'b2, 'b1: 'b2, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, Self>
+    pub fn rem<'b2, 'b1: 'b2, B1, B2>(lhs: B1, rhs: B2) -> Moo<'b2, Self>
     where
         B1: Into<MaybeSignedBoo<'b1, D>>,
         B2: Into<MaybeSignedBoo<'b2, D>>,
@@ -792,7 +826,7 @@ impl<D: Digit> BigInt<D> {
             (lhs, rhs) => Self::div_mod(lhs, rhs).1,
         }
     }
-    pub(crate) fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+    pub fn div_mod<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
     ) -> (Moo<'b1, Self>, Moo<'b2, Self>)
@@ -852,7 +886,7 @@ impl<D: Digit> BigInt<D> {
         (q, r)
     }
 
-    pub(crate) fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
+    pub fn div_mod_euclid<'b, 'b1: 'b, 'b2: 'b, B1, B2>(
         lhs: B1,
         rhs: B2,
     ) -> (Moo<'b1, Self>, Moo<'b2, BigUInt<D>>)
@@ -878,10 +912,10 @@ impl<D: Digit> BigInt<D> {
             debug_assert!(!r.is_negative(), "non euclid shifted r:{} negative", *r);
         }
 
-        (q, Moo::from(Mob::from(MaybeSignedBoo::from(r))))
+        (q, Moo::from_mob_cloned(Mob::from(MaybeSignedBoo::from(r))))
     }
 
-    pub(crate) fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
+    pub fn pow<'b, 'b1: 'b, 'b2: 'b, B1, B2, P>(lhs: B1, pow: B2) -> Moo<'b, Self>
     where
         B1: Into<Mob<'b1, Self>>,
         P: Decomposable<bool> + 'b2 + Signed + Clone,

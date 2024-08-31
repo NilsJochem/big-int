@@ -159,8 +159,8 @@ impl<D: Digit> Decimal<D> {
         B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let mut lhs = Moo::<Self>::from(lhs.into());
-        let mut rhs = Moo::<Self>::from(rhs.into());
+        let mut lhs = Moo::<Self>::from_mob_cloned(lhs.into());
+        let mut rhs = Moo::<Self>::from_mob_cloned(rhs.into());
 
         if lhs.denominator != rhs.denominator {
             let lhs_denominator = lhs.denominator.clone();
@@ -176,7 +176,7 @@ impl<D: Digit> Decimal<D> {
         B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let mut lhs = Moo::<Self>::from(lhs.into());
+        let mut lhs = Moo::<Self>::from_mob_cloned(lhs.into());
         lhs.negate();
         Self::add(lhs, rhs)
     }
@@ -221,7 +221,7 @@ impl<D: Digit> Decimal<D> {
         B2: Into<Mob<'b2, Self>>,
         D: 'b1 + 'b2,
     {
-        let mut rhs = Moo::<Self>::from(rhs.into());
+        let mut rhs = Moo::<Self>::from_mob_cloned(rhs.into());
         rhs.recip();
         Self::mul(lhs, rhs)
     }

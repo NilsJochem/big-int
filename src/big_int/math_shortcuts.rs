@@ -103,7 +103,7 @@ pub(super) fn get_lhs<'b, B: Clone>(lhs: Mob<'b, B>, rhs: Mob<'b, B>) -> Moo<'b,
             *rhs = lhs.cloned();
             Moo::BorrowedMut(rhs)
         }
-        (lhs, _) => Moo::<B>::from(lhs),
+        (lhs, _) => Moo::<B>::from_mob_cloned(lhs),
     }
 }
 
