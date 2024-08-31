@@ -36,25 +36,25 @@ mod create {
     #[test]
     fn from_u32s() {
         assert_eq!(
-            BigIInt::<u32>::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]),
-            BigIInt {
-                signum: SigNum::Positive,
-                unsigned: BigUInt {
+            BigIInt::<u32>::from_iter([0x3322_1100u32, 0x7766_5544, 0x9988, 0]).split_sign(),
+            (
+                SigNum::Positive,
+                BigUInt {
                     digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988].into()
                 }
-            }
+            )
         );
     }
     #[test]
     fn from_i128() {
         assert_eq!(
-            BigIInt::<u32>::from(-0x9988_7766_5544_3322_1100i128),
-            BigIInt {
-                signum: SigNum::Negative,
-                unsigned: BigUInt {
+            BigIInt::<u32>::from(-0x9988_7766_5544_3322_1100i128).split_sign(),
+            (
+                SigNum::Negative,
+                BigUInt {
                     digits: vec![0x3322_1100u32, 0x7766_5544, 0x0000_9988].into()
                 }
-            }
+            )
         );
     }
 

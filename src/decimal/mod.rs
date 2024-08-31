@@ -55,14 +55,14 @@ impl<D: Digit> Decimal<D> {
         Some(Self::new_coprime(factors.a, factors.b))
     }
     fn extend(&mut self, rhs: &BigUInt<D>) {
-        *self.numerator *= rhs;
+        *self.numerator.abs_mut() *= rhs;
         self.denominator *= rhs;
     }
     pub const fn signum(&self) -> SigNum {
         self.numerator.signum()
     }
     pub fn abs_cmp_one(&self) -> std::cmp::Ordering {
-        (*self.numerator).cmp(&self.denominator)
+        self.numerator.abs().cmp(&self.denominator)
     }
 
     pub fn div_mod_euclid(self) -> (BigIInt<D>, BigUInt<D>) {
@@ -106,7 +106,7 @@ impl<D: Digit> Decimal<D> {
     }
     pub fn recip(&mut self) {
         assert!(!self.numerator.is_zero(), "can't invert 0");
-        std::mem::swap(&mut *self.numerator, &mut self.denominator);
+        std::mem::swap(self.numerator.abs_mut(), &mut self.denominator);
     }
 
     fn split(value: Boo<'_, Self>) -> (Boo<'_, BigIInt<D>>, Boo<'_, BigUInt<D>>) {

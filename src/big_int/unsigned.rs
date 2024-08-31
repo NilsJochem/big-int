@@ -7,7 +7,7 @@ use crate::{
     },
     ops::{Pow, PowAssign},
     util::boo::{Boo, Moo},
-    BigIInt, SigNum, Sign,
+    SigNum, Sign,
 };
 
 use common::{extensions::iter::IteratorExt, require};
@@ -461,11 +461,6 @@ pub enum FromStrErr {
 }
 
 // From traits
-impl<D: Digit> From<BigIInt<D>> for BigInt<D> {
-    fn from(value: BigIInt<D>) -> Self {
-        value.unsigned
-    }
-}
 impl<POSITIVE: super::primitve::UNum, D: Digit> FromIterator<POSITIVE> for BigInt<D> {
     /// the iter should contain the digits in little endian order
     fn from_iter<T: IntoIterator<Item = POSITIVE>>(iter: T) -> Self {
@@ -670,15 +665,8 @@ impl<D: Digit> BigInt<D> {
     };
 
     // construction
-    pub fn with_sign(self, sign: Sign) -> BigIInt<D> {
-        BigIInt {
-            signum: if self.is_zero() {
-                SigNum::Zero
-            } else {
-                sign.into()
-            },
-            unsigned: self,
-        }
+    pub fn with_sign(self, sign: impl Into<Sign>) -> super::signed::BigInt<D> {
+        super::signed::BigInt::new(sign, self)
     }
     /// generate a new random number with at least `bytes.start()` and at most `bytes.end()` bytes of information
     /// # Example

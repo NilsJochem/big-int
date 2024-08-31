@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
 name = "big-int"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["Nils Jochem"]
 license = "MPL-2.0"

@@ -272,7 +272,7 @@ pub mod gcd {
             new = next;
         }
         old.s *= sign_a;
-        new.s.signum = sign_b;
+        new.s.set_sign(sign_b);
         (old, new)
     }
 
@@ -429,11 +429,18 @@ pub mod gcd {
 
             let bezout = BezoutBuilder::new(&a, &b);
             assert_eq!(
-                bezout.clone().calculate_coefficients(&gcd, old_s.into()).y,
+                bezout
+                    .clone()
+                    .calculate_coefficients(gcd.abs(), old_s.into())
+                    .y,
                 old_t.into(),
                 "old t"
             );
-            assert_eq!(bezout.calculate_factors(&gcd, b / &gcd).a, a / gcd, "new t");
+            assert_eq!(
+                bezout.calculate_factors(gcd.abs(), b / &gcd).a,
+                a / gcd,
+                "new t"
+            );
         }
     }
 }

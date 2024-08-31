@@ -11,11 +11,12 @@ use itertools::Either;
 use std::{
     fmt::{Debug, Write},
     ops::{
-        Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub,
-        SubAssign,
+        Add, AddAssign, Deref, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
     },
     str::FromStr,
 };
+
+use super::unsigned::radix::Radix;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(i8)]
@@ -147,9 +148,9 @@ impl<'b, D: Digit> Deref for MaybeSignedBoo<'b, D> {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::BorrowedMut(it) => it,
-            Self::Borrowed(Either::Left(it)) => it,
-            Self::Owned(Either::Left(it)) => it,
+            Self::BorrowedMut(it) => &it.unsigned,
+            Self::Borrowed(Either::Left(it)) => &it.unsigned,
+            Self::Owned(Either::Left(it)) => &it.unsigned,
             Self::Borrowed(Either::Right(it)) => it,
             Self::Owned(Either::Right(it)) => it,
         }
@@ -227,9 +228,9 @@ impl<'b, D: Digit> MaybeSignedBoo<'b, D> {
     }
     fn cloned_abs(&self) -> BigUInt<D> {
         match self {
-            MaybeSignedBoo::BorrowedMut(it) => it.abs_clone(),
-            MaybeSignedBoo::Borrowed(Either::Left(it)) => it.abs_clone(),
-            MaybeSignedBoo::Owned(Either::Left(it)) => it.abs_clone(),
+            MaybeSignedBoo::BorrowedMut(it) => it.abs().clone(),
+            MaybeSignedBoo::Borrowed(Either::Left(it)) => it.abs().clone(),
+            MaybeSignedBoo::Owned(Either::Left(it)) => it.abs().clone(),
             MaybeSignedBoo::Borrowed(Either::Right(it)) => (*it).clone(),
             MaybeSignedBoo::Owned(Either::Right(it)) => it.clone(),
         }
@@ -255,12 +256,28 @@ impl<'b, D: Digit> MaybeSignedBoo<'b, D> {
     }
 }
 
+impl<D: Digit> From<BigInt<D>> for BigUInt<D> {
+    fn from(value: BigInt<D>) -> Self {
+        value.unsigned
+    }
+}
+impl<'u, 's: 'u, D: Digit> From<&'s BigInt<D>> for &'u BigUInt<D> {
+    fn from(value: &'s BigInt<D>) -> Self {
+        value.abs()
+    }
+}
+impl<D: Digit> AsRef<BigUInt<D>> for BigInt<D> {
+    fn as_ref(&self) -> &BigUInt<D> {
+        self.abs()
+    }
+}
+
 #[derive(Clone, Default, Hash)]
 pub struct BigInt<D> {
     /// the sign of the number or zero <=> `digits.is_empty()`
-    pub(super) signum: SigNum,
+    signum: SigNum,
     /// holds the digits in LE order
-    pub(super) unsigned: BigUInt<D>,
+    unsigned: BigUInt<D>,
 }
 
 impl<D: Digit> std::fmt::Debug for BigInt<D> {
@@ -411,18 +428,6 @@ impl<D: Digit> Decomposable<bool> for BigInt<D> {
         <BigUInt<D> as Decomposable<bool>>::le_digits(&self.unsigned)
     }
 }
-impl<D: Digit> Deref for BigInt<D> {
-    type Target = BigUInt<D>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.unsigned
-    }
-}
-impl<D: Digit> DerefMut for BigInt<D> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.unsigned
-    }
-}
 
 impl<D: Digit> BigInt<D> {
     pub const ZERO: Self = Self {
@@ -437,6 +442,13 @@ impl<D: Digit> BigInt<D> {
         signum: SigNum::Negative,
         unsigned: BigUInt::ONE,
     };
+    pub fn new(sign: impl Into<Sign>, unsigned: impl Into<BigUInt<D>>) -> Self {
+        let unsigned = unsigned.into();
+        Self {
+            signum: Self::get_new_signum(&unsigned, || sign.into()),
+            unsigned,
+        }
+    }
     pub fn from_digit(value: D) -> Self {
         BigUInt::from_digit(value).into()
     }
@@ -460,15 +472,33 @@ impl<D: Digit> BigInt<D> {
     }
 
     fn recalc_sign(&mut self) {
-        if self.digits.is_empty() {
+        if self.abs().is_zero() {
             self.signum = SigNum::Zero;
         } else {
             assert!(!self.signum.is_zero(), "found {self:?} with Signnum::Zero");
         }
     }
+    fn get_new_signum(unsigned: &BigUInt<D>, sign: impl FnOnce() -> Sign) -> SigNum {
+        if unsigned.is_zero() {
+            SigNum::Zero
+        } else {
+            sign().into()
+        }
+    }
+
+    pub const fn abs(&self) -> &BigUInt<D> {
+        &self.unsigned
+    }
+    pub(crate) fn abs_mut(&mut self) -> &mut BigUInt<D> {
+        &mut self.unsigned
+    }
     pub const fn signum(&self) -> SigNum {
         self.signum
     }
+    pub fn set_sign(&mut self, sign: impl Into<Sign>) {
+        self.signum = Self::get_new_signum(&self.unsigned, || sign.into());
+    }
+
     pub const fn is_negative(&self) -> bool {
         self.signum().is_negative()
     }
@@ -478,33 +508,55 @@ impl<D: Digit> BigInt<D> {
     pub const fn is_zero(&self) -> bool {
         self.signum().is_zero()
     }
-    #[allow(dead_code)]
-    const fn is_different_sign(&self, rhs: &Self) -> bool {
-        self.signum().is_different(rhs.signum())
+
+    pub fn is_one(&self) -> bool {
+        self.unsigned.is_one()
+    }
+    pub fn is_even(&self) -> bool {
+        self.unsigned.is_even()
+    }
+    pub fn is_power_of_two(&self) -> bool {
+        self.unsigned.is_power_of_two()
     }
 
-    pub fn abs_ord(&self, rhs: &Self) -> std::cmp::Ordering {
-        self.unsigned.cmp(&rhs.unsigned)
+    pub fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
+    where
+        T: TryInto<Radix<D>>,
+    {
+        self.unsigned.try_digits(radix)
     }
-    #[must_use]
-    pub fn abs_clone(&self) -> BigUInt<D> {
-        self.unsigned.clone()
+    pub fn digits<T>(&self, radix: T) -> usize
+    where
+        T: TryInto<Radix<D>>,
+        T::Error: Debug,
+    {
+        self.unsigned.digits(radix)
+    }
+    pub fn try_ilog<T>(&self, radix: T) -> Result<usize, T::Error>
+    where
+        T: TryInto<Radix<D>>,
+    {
+        self.unsigned.try_ilog(radix)
+    }
+    pub fn ilog<T>(&self, radix: T) -> usize
+    where
+        T: TryInto<Radix<D>>,
+        T::Error: Debug,
+    {
+        self.unsigned.ilog(radix)
     }
 
     pub fn negate(&mut self) {
         self.signum = -self.signum;
     }
-    pub fn abs(&mut self) {
-        self.signum = self.signum.abs();
-    }
     pub fn take_sign(&mut self) -> SigNum {
         let signum = self.signum;
-        self.abs();
+        self.signum = self.signum.abs();
         signum
     }
 
     pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {
-        BigUInt::rebase(&self.unsigned).with_sign(self.signum.into())
+        self.unsigned.rebase().with_sign(self.signum)
     }
 
     /// needs to newly allocate on big endian systems
@@ -551,20 +603,26 @@ impl<D: Digit> BigInt<D> {
 
         match (lhs, rhs) {
             (MaybeSignedBoo::BorrowedMut(borrow_mut), borrow) => {
-                let _ = func(Boo::BorrowedMut(borrow_mut), Boo::from(borrow));
+                let _ = func(
+                    Boo::BorrowedMut(&mut borrow_mut.unsigned),
+                    Boo::from(borrow),
+                );
                 borrow_mut.signum = new_sign;
                 borrow_mut.recalc_sign();
                 Moo::BorrowedMut(borrow_mut)
             }
             (borrow, MaybeSignedBoo::BorrowedMut(borrow_mut)) => {
-                let _ = func(Boo::from(borrow), Boo::BorrowedMut(borrow_mut));
+                let _ = func(
+                    Boo::from(borrow),
+                    Boo::BorrowedMut(&mut borrow_mut.unsigned),
+                );
                 borrow_mut.signum = new_sign;
                 borrow_mut.recalc_sign();
                 Moo::BorrowedMut(borrow_mut)
             }
             (lhs, rhs) => {
                 let owned = func(Boo::from(lhs), Boo::from(rhs)).expect_owned("no mut ref given");
-                Moo::Owned(owned.with_sign(new_sign.into()))
+                Moo::Owned(owned.with_sign(new_sign))
             }
         }
     }
@@ -668,7 +726,7 @@ impl<D: Digit> BigInt<D> {
                 Moo::Owned(
                     BigUInt::mul_by_digit(Boo::from(lhs), rhs)
                         .expect_owned("no mut ref")
-                        .with_sign(sign.into()),
+                        .with_sign(sign),
                 )
             }
         }
@@ -780,7 +838,7 @@ impl<D: Digit> BigInt<D> {
         *r *= signum_r;
 
         debug_assert!(
-            r.unsigned.cmp(&d).is_lt(),
+            r.abs() < d.abs(),
             "|r| < |d| failed for \nr: {}, d: {d}",
             *r
         );
@@ -811,7 +869,7 @@ impl<D: Digit> BigInt<D> {
         let (mut q, mut r) = Self::div_mod(lhs, rhs);
 
         if let Some(d) = map_r.filter(|_| !r.is_zero()) {
-            *q += BigUInt::from(1u8).with_sign(signum_q.into());
+            *q += BigUInt::from(1u8).with_sign(signum_q);
 
             debug_assert!(r.is_negative(), "pre euclid shifted r:{} not negative", *r);
             *r = d + &*r;
