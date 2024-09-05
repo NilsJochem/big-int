@@ -351,19 +351,19 @@ pub(super) mod digit_holder {
 }
 use digit_holder::DigitHolder;
 #[derive(Clone, Default, Hash)]
-pub struct BigInt<D> {
+pub struct BigUInt<D> {
     /// holds the digits in LE order
     pub(super) digits: DigitHolder<D>,
 }
 
-impl<D: Digit> Debug for BigInt<D> {
+impl<D: Digit> Debug for BigUInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Number {{ ")?;
         self.inner_debug(f)?;
         write!(f, "}}")
     }
 }
-impl<D: Digit> std::fmt::Display for BigInt<D> {
+impl<D: Digit> std::fmt::Display for BigUInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.clone().write_with_radix(
             f,
@@ -374,7 +374,7 @@ impl<D: Digit> std::fmt::Display for BigInt<D> {
         )
     }
 }
-impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
+impl<D: Digit> std::fmt::LowerHex for BigUInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
             write!(f, "0x")?;
@@ -385,7 +385,7 @@ impl<D: Digit> std::fmt::LowerHex for BigInt<D> {
         Ok(())
     }
 }
-impl<D: Digit> std::fmt::UpperHex for BigInt<D> {
+impl<D: Digit> std::fmt::UpperHex for BigUInt<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
             write!(f, "0X")?;
@@ -397,19 +397,19 @@ impl<D: Digit> std::fmt::UpperHex for BigInt<D> {
     }
 }
 
-impl<D: Digit> Eq for BigInt<D> {}
-impl<D: Digit> Ord for BigInt<D> {
+impl<D: Digit> Eq for BigUInt<D> {}
+impl<D: Digit> Ord for BigUInt<D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
-impl<D: Digit, M: Decomposable<D>> PartialEq<M> for BigInt<D> {
+impl<D: Digit, M: Decomposable<D>> PartialEq<M> for BigUInt<D> {
     fn eq(&self, other: &M) -> bool {
         self.partial_cmp(other)
             .is_some_and(std::cmp::Ordering::is_eq)
     }
 }
-impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigInt<D> {
+impl<D: Digit, M: Decomposable<D>> PartialOrd<M> for BigUInt<D> {
     fn partial_cmp(&self, other: &M) -> Option<std::cmp::Ordering> {
         let digits = other.le_digits();
 
@@ -461,7 +461,7 @@ pub enum FromStrErr {
 }
 
 // From traits
-impl<POSITIVE: super::primitve::UNum, D: Digit> FromIterator<POSITIVE> for BigInt<D> {
+impl<POSITIVE: super::primitve::UNum, D: Digit> FromIterator<POSITIVE> for BigUInt<D> {
     /// the iter should contain the digits in little endian order
     fn from_iter<T: IntoIterator<Item = POSITIVE>>(iter: T) -> Self {
         Self::from_digits(D::from_le(
@@ -481,7 +481,7 @@ cfg_if::cfg_if! {
         feature = "uintFromAssertIPrimitive"
     ))] {
         use crate::big_int::primitve::{Either, INum};
-        impl<PRIMITIVE: super::primitve::Primitive, D: Digit> From<PRIMITIVE> for BigInt<D> {
+        impl<PRIMITIVE: super::primitve::Primitive, D: Digit> From<PRIMITIVE> for BigUInt<D> {
             fn from(value: PRIMITIVE) -> Self {
                 iter::once(
                     match value.select_sign() {
@@ -496,7 +496,7 @@ cfg_if::cfg_if! {
             }
         }
     } else {
-        impl<POSITIVE: super::primitve::UNum, D: Digit> From<POSITIVE> for BigInt<D> {
+        impl<POSITIVE: super::primitve::UNum, D: Digit> From<POSITIVE> for BigUInt<D> {
             fn from(pos: POSITIVE) -> Self {
                 iter::once(pos).collect()
             }
@@ -504,7 +504,7 @@ cfg_if::cfg_if! {
     }
 }
 
-impl<D: Digit> FromStr for BigInt<D> {
+impl<D: Digit> FromStr for BigUInt<D> {
     type Err = FromStrErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -529,22 +529,22 @@ impl<D: Digit> FromStr for BigInt<D> {
 }
 
 // Into traits
-impl<D: Digit> Signed for BigInt<D> {
+impl<D: Digit> Signed for BigUInt<D> {
     fn signum(&self) -> SigNum {
         self.signum()
     }
 }
-impl<D: Digit> Convert<usize> for BigInt<D> {
+impl<D: Digit> Convert<usize> for BigUInt<D> {
     fn try_into(&self) -> Option<usize> {
         D::try_combine(self.digits.iter().copied())
     }
 }
-impl<D: Digit> Decomposable<D> for BigInt<D> {
+impl<D: Digit> Decomposable<D> for BigUInt<D> {
     fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_ {
         self.digits.iter().copied()
     }
 }
-impl<D: Digit> Decomposable<bool> for BigInt<D> {
+impl<D: Digit> Decomposable<bool> for BigUInt<D> {
     fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
         self.digits
             .iter()
@@ -557,7 +557,7 @@ impl<D: Digit> Decomposable<bool> for BigInt<D> {
 pub mod radix {
     use core::num::NonZero;
 
-    use super::BigInt;
+    use super::BigUInt;
     use crate::big_int::{digits::Digit, AnyBigIntRef};
     use common::require;
 
@@ -571,7 +571,7 @@ pub mod radix {
         DigitBase,
         /// should not be `DigitBase`
         PowerOfTwo(NonZero<usize>),
-        Other(BigInt<D>),
+        Other(BigUInt<D>),
     }
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Error {
@@ -603,10 +603,10 @@ pub mod radix {
         }
     }
 
-    impl<D: Digit> TryFrom<BigInt<D>> for Radix<D> {
+    impl<D: Digit> TryFrom<BigUInt<D>> for Radix<D> {
         type Error = Error;
 
-        fn try_from(value: BigInt<D>) -> Result<Self, Error> {
+        fn try_from(value: BigUInt<D>) -> Result<Self, Error> {
             require!(value.is_zero(), Error::Zero);
             require!(value.is_one(), Error::One);
             Ok(if value.is_power_of_two() {
@@ -625,16 +625,16 @@ use super::{digits::Signed, AnyBigIntRef};
 
 trait TieBreaker {
     fn decide<'b, D: Digit>(
-        lhs: Mob<'b, BigInt<D>>,
-        rhs: Mob<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Mob<'b, BigInt<D>>);
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
+    ) -> (BigUInt<D>, Mob<'b, BigUInt<D>>);
 }
 struct TieSmaller;
 impl TieBreaker for TieSmaller {
     fn decide<'b, D: Digit>(
-        lhs: Mob<'b, BigInt<D>>,
-        rhs: Mob<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Mob<'b, BigInt<D>>) {
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
+    ) -> (BigUInt<D>, Mob<'b, BigUInt<D>>) {
         if *lhs <= *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -645,9 +645,9 @@ impl TieBreaker for TieSmaller {
 struct TieBigger;
 impl TieBreaker for TieBigger {
     fn decide<'b, D: Digit>(
-        lhs: Mob<'b, BigInt<D>>,
-        rhs: Mob<'b, BigInt<D>>,
-    ) -> (BigInt<D>, Mob<'b, BigInt<D>>) {
+        lhs: Mob<'b, BigUInt<D>>,
+        rhs: Mob<'b, BigUInt<D>>,
+    ) -> (BigUInt<D>, Mob<'b, BigUInt<D>>) {
         if *lhs > *rhs {
             (lhs.cloned(), rhs)
         } else {
@@ -656,7 +656,7 @@ impl TieBreaker for TieBigger {
     }
 }
 
-impl<D: Digit> BigInt<D> {
+impl<D: Digit> BigUInt<D> {
     pub const ZERO: Self = Self {
         digits: DigitHolder::new(),
     };
@@ -665,8 +665,8 @@ impl<D: Digit> BigInt<D> {
     };
 
     // construction
-    pub fn with_sign(self, sign: impl Into<Sign>) -> super::signed::BigInt<D> {
-        super::signed::BigInt::new(sign, self)
+    pub fn with_sign(self, sign: impl Into<Sign>) -> super::signed::BigIInt<D> {
+        super::signed::BigIInt::new(sign, self)
     }
     /// generate a new random number with at least `bytes.start()` and at most `bytes.end()` bytes of information
     /// # Example
@@ -829,7 +829,7 @@ impl<D: Digit> BigInt<D> {
     where
         T: TryInto<Radix<D>>,
     {
-        fn inner<D: Digit>(number: &BigInt<D>, radix: Radix<D>) -> usize {
+        fn inner<D: Digit>(number: &BigUInt<D>, radix: Radix<D>) -> usize {
             match radix {
                 Radix::DigitBase => number.digits.len(),
                 Radix::PowerOfTwo(radix::NONZERO_ONE) => number.digits.last().map_or(0, |last| {
@@ -1313,42 +1313,42 @@ impl<D: Digit> BigInt<D> {
 
 macro_rules! implBigMath {
 	($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident) => {
-		implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigInt<D>);
+		implBigMath!($($assign_trait)::*, $assign_func, $($trait)::*, $func, $func, BigUInt<D>);
 	};
 	($($assign_trait:tt)::*, $assign_func:ident, $($trait:tt)::*, $func:ident, $ref_func:ident, $rhs: ident$(<$gen:ident>)?) => {
-		impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+		impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for BigUInt<D> {
 			implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
 		}
-		impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+		impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for BigUInt<D> {
 			implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
 		}
-		impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for &BigInt<D> {
+		impl<D: Digit> $($trait)::*<$rhs$(<$gen>)?> for &BigUInt<D> {
 			implBigMath!(body $func, $ref_func, $rhs$(<$gen>)?);
 		}
-		impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for &BigInt<D> {
+		impl<D: Digit> $($trait)::*<&$rhs$(<$gen>)?> for &BigUInt<D> {
 			implBigMath!(body $func, $ref_func, &$rhs$(<$gen>)?);
 		}
-		impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigInt<D> {
+		impl<D: Digit> $($assign_trait)::*<$rhs$(<$gen>)?> for BigUInt<D> {
 			fn $assign_func(&mut self, rhs: $rhs$(<$gen>)?) {
-				BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+				BigUInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
 			}
 		}
-		impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigInt<D> {
+		impl<D: Digit> $($assign_trait)::*<&$rhs$(<$gen>)?> for BigUInt<D> {
 			fn $assign_func(&mut self, rhs: &$rhs$(<$gen>)?) {
-				BigInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
+				BigUInt::$ref_func(self, rhs).expect_mut("did give &mut, shouldn't get result");
 			}
 		}
 	};
 	(body $func:tt, $ref_func:ident, $rhs:ident$(<$gen:ident>)?) => {
-		type Output = BigInt<D>;
+		type Output = BigUInt<D>;
 		fn $func(self, rhs: $rhs$(<$gen>)?) -> Self::Output {
-			BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
+			BigUInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
 		}
 	};
 	(body $func:tt, $ref_func:ident, &$rhs:ident$(<$gen:ident>)?) => {
-		type Output = BigInt<D>;
+		type Output = BigUInt<D>;
 		fn $func(self, rhs: &$rhs$(<$gen>)?) -> Self::Output {
-			BigInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
+			BigUInt::$ref_func(self, rhs).expect_owned("didn't give &mut, should get result")
 		}
 	};
 	}
@@ -1361,25 +1361,25 @@ implBigMath!(SubAssign, sub_assign, Sub, sub);
 implBigMath!(AddAssign, add_assign, Add, add);
 implBigMath!(MulAssign, mul_assign, Mul, mul, mul_by_digit, D);
 implBigMath!(MulAssign, mul_assign, Mul, mul);
-implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigInt<D>);
-implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigInt<D>);
+implBigMath!(DivAssign, div_assign, Div, div, div_euclid, BigUInt<D>);
+implBigMath!(RemAssign, rem_assign, Rem, rem, rem_euclid, BigUInt<D>);
 
 // manual impl of Pow as RHS is generic
-impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for BigInt<D> {
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for BigUInt<D> {
     type Output = Self;
 
     fn pow(self, rhs: P) -> Self::Output {
         Self::pow(self, rhs).expect_owned("no mut ref given")
     }
 }
-impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for &BigInt<D> {
-    type Output = BigInt<D>;
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> Pow<P> for &BigUInt<D> {
+    type Output = BigUInt<D>;
 
     fn pow(self, rhs: P) -> Self::Output {
-        BigInt::pow(self, rhs).expect_owned("no mut ref given")
+        BigUInt::pow(self, rhs).expect_owned("no mut ref given")
     }
 }
-impl<D: Digit, P: Decomposable<bool> + Signed + Clone> PowAssign<P> for BigInt<D> {
+impl<D: Digit, P: Decomposable<bool> + Signed + Clone> PowAssign<P> for BigUInt<D> {
     fn pow_assign(&mut self, rhs: P) {
         Self::pow(self, rhs).expect_mut("mut ref given");
     }
