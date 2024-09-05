@@ -144,6 +144,8 @@ pub mod sub {
 }
 
 pub mod mul {
+    use crate::big_int::AnyBigIntRef;
+
     use super::*;
     pub struct ByZero;
     impl MathShortcutFlip for ByZero {

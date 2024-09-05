@@ -558,7 +558,7 @@ pub mod radix {
     use core::num::NonZero;
 
     use super::BigInt;
-    use crate::big_int::digits::Digit;
+    use crate::big_int::{digits::Digit, AnyBigIntRef};
     use common::require;
 
     pub const NONZERO_ONE: NonZero<usize> = {
@@ -621,7 +621,7 @@ pub mod radix {
 }
 use radix::Radix;
 
-use super::digits::Signed;
+use super::{digits::Signed, AnyBigIntRef};
 
 trait TieBreaker {
     fn decide<'b, D: Digit>(
@@ -824,21 +824,6 @@ impl<D: Digit> BigInt<D> {
     pub fn is_one(&self) -> bool {
         self.digits.len() == 1 && self.digits.first().unwrap().eq_u8(1)
     }
-    pub fn is_even(&self) -> bool {
-        self.digits.last().map_or(true, D::is_even)
-    }
-    pub fn is_power_of_two(&self) -> bool {
-        self.digits.last().map_or(false, Digit::is_power_of_two)
-            && self.digits.iter().rev().skip(1).all(|&it| it.eq_u8(0))
-    }
-
-    pub fn digits<T>(&self, radix: T) -> usize
-    where
-        T: TryInto<Radix<D>>,
-        T::Error: Debug,
-    {
-        self.try_digits(radix).unwrap()
-    }
 
     pub fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
     where
@@ -870,30 +855,6 @@ impl<D: Digit> BigInt<D> {
         Ok(inner(self, radix.try_into()?))
     }
 
-    pub fn ilog<T>(&self, radix: T) -> usize
-    where
-        T: TryInto<Radix<D>>,
-        T::Error: Debug,
-    {
-        assert!(!self.is_zero(), "can't 0.log(radix)");
-        self.try_ilog(radix).unwrap()
-    }
-
-    pub fn try_ilog<T>(&self, radix: T) -> Result<usize, T::Error>
-    where
-        T: TryInto<Radix<D>>,
-    {
-        assert!(!self.is_zero(), "can't 0.log(radix)");
-        self.try_digits(radix).map(|it| it - 1)
-    }
-
-    pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {
-        BigInt::<D2>::from_iter(
-            self.digits
-                .iter()
-                .flat_map(<D as Decomposable<u8>>::le_digits),
-        )
-    }
     fn from_base(
         source: &str,
         radix: u8,

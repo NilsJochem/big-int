@@ -16,8 +16,6 @@ use std::{
     str::FromStr,
 };
 
-use super::unsigned::radix::Radix;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(i8)]
 pub enum Sign {
@@ -544,43 +542,6 @@ impl<D: Digit> BigInt<D> {
         self.signum().is_zero()
     }
 
-    pub fn is_one(&self) -> bool {
-        self.unsigned.is_one()
-    }
-    pub fn is_even(&self) -> bool {
-        self.unsigned.is_even()
-    }
-    pub fn is_power_of_two(&self) -> bool {
-        self.unsigned.is_power_of_two()
-    }
-
-    pub fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
-    where
-        T: TryInto<Radix<D>>,
-    {
-        self.unsigned.try_digits(radix)
-    }
-    pub fn digits<T>(&self, radix: T) -> usize
-    where
-        T: TryInto<Radix<D>>,
-        T::Error: Debug,
-    {
-        self.unsigned.digits(radix)
-    }
-    pub fn try_ilog<T>(&self, radix: T) -> Result<usize, T::Error>
-    where
-        T: TryInto<Radix<D>>,
-    {
-        self.unsigned.try_ilog(radix)
-    }
-    pub fn ilog<T>(&self, radix: T) -> usize
-    where
-        T: TryInto<Radix<D>>,
-        T::Error: Debug,
-    {
-        self.unsigned.ilog(radix)
-    }
-
     pub fn negate(&mut self) {
         self.signum = -self.signum;
     }
@@ -588,10 +549,6 @@ impl<D: Digit> BigInt<D> {
         let signum = self.signum;
         self.signum = self.signum.abs();
         signum
-    }
-
-    pub fn rebase<D2: Digit>(&self) -> BigInt<D2> {
-        self.unsigned.rebase().with_sign(self.signum)
     }
 
     /// needs to newly allocate on big endian systems
