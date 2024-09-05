@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use digits::{Convert, Decomposable, Digit, Signed};
+use signed::SigNum;
 use unsigned::radix::Radix;
 
 // SPDX-FileCopyrightText: 2024 Nils Jochem
@@ -21,6 +22,7 @@ where
     for<'a> BigIntRef<'a, D>: From<&'a Self>,
 {
     type Base<D1: Digit>;
+    type Owned;
 
     fn is_zero(&self) -> bool;
     fn is_abs_one(&self) -> bool;
@@ -58,6 +60,9 @@ where
     fn rebase<D2: Digit>(&self) -> Self::Base<D2>;
 
     fn abs(&self) -> &BigUInt<D>;
+
+    fn into_owned(self) -> Self::Owned;
+    fn cloned(&self) -> Self::Owned;
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -67,7 +72,85 @@ where
     for<'a> BigIntRef<'a, D>: From<&'a Self>,
 {
     fn into_abs(self) -> BigUInt<D>;
+    fn into_signed(self) -> BigIInt<D>;
 }
+
+#[macro_export]
+macro_rules! RefEnum {
+    (
+        $self:ident$(<$($self_gen:tt),+>)?,
+        $base:ident$(<$($base_gen:tt),+>)?,
+        $owned:ident$(<$($owned_gen:tt),+>)?,
+        $($variant:ident),+
+    ) => {
+        impl<D: Digit> Signed for $self$(<$($self_gen),+>)? {
+            RefEnum!(f signum, SigNum, $($variant),+);
+        }
+        impl<D: Digit> Decomposable<D> for $self$(<$($self_gen),+>)? {
+            fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_ {
+                Decomposable::<D>::le_digits(self.abs())
+            }
+        }
+        impl<D: Digit> Decomposable<bool> for $self$(<$($self_gen),+>)? {
+            fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
+                Decomposable::<bool>::le_digits(self.abs())
+            }
+        }
+        impl<D: Digit> AnyBigIntRef<D> for $self$(<$($self_gen),+>)? {
+            type Base<D1: Digit> = $base$(<$($base_gen),+>)?;
+            type Owned = $owned$(<$($owned_gen),+>)?;
+
+            RefEnum!(f is_zero, bool, $($variant),+);
+            RefEnum!(f is_abs_one, bool, $($variant),+);
+            RefEnum!(f is_even, bool, $($variant),+);
+            RefEnum!(f is_power_of_two, bool, $($variant),+);
+
+            fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
+            where
+                T: TryInto<Radix<D>>,
+            {
+                match self {
+                    $(
+                        Self::$variant(it) => it.try_digits(radix),
+                    )+
+                }
+            }
+
+            fn rebase<D2: Digit>(&self) -> Self::Base<D2> {
+
+                match self {
+                    $(
+                        Self::$variant(it) => Self::Base::from(it.rebase()),
+                    )+
+                }
+            }
+
+            fn abs(&self) -> &BigUInt<D> {
+                match self {
+                    $(
+                        Self::$variant(it) => it.abs(),
+                    )+
+                }
+            }
+            fn into_owned(self) -> <Self as AnyBigIntRef<D>>::Owned {
+                self.inner_into_owned()
+            }
+            fn cloned(&self) -> <Self as AnyBigIntRef<D>>::Owned {
+                self.inner_cloned()
+            }
+        }
+    };
+    (f $func:ident, $($ret:tt)::+, $($variant:ident),+) => {
+        fn $func(&self) -> $($ret)::+ {
+            match self {
+                $(
+                    Self::$variant(it) => it.$func(),
+                )+
+            }
+        }
+    };
+}
+pub use RefEnum;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Copy, derive_more::From)]
@@ -91,14 +174,7 @@ impl<'a, D: Digit> From<&'a BigIntRef<'_, D>> for BigIntRef<'a, D> {
         }
     }
 }
-impl<D: Digit> Signed for BigIntRef<'_, D> {
-    fn signum(&self) -> crate::SigNum {
-        match self {
-            Self::Signed(it) => it.signum(),
-            Self::Unsigned(it) => it.signum(),
-        }
-    }
-}
+
 impl<D: Digit> Convert<usize> for BigIntRef<'_, D> {
     fn try_into(&self) -> Option<usize> {
         match self {
@@ -107,66 +183,17 @@ impl<D: Digit> Convert<usize> for BigIntRef<'_, D> {
         }
     }
 }
-impl<D: Digit> Decomposable<D> for BigIntRef<'_, D> {
-    fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_ {
-        Decomposable::<D>::le_digits(self.abs())
-    }
-}
-impl<D: Digit> Decomposable<bool> for BigIntRef<'_, D> {
-    fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
-        Decomposable::<bool>::le_digits(self.abs())
-    }
-}
 
-impl<D: Digit> AnyBigIntRef<D> for BigIntRef<'_, D> {
-    type Base<D1: Digit> = BigInt<D1>;
-    fn is_zero(&self) -> bool {
+RefEnum!(BigIntRef<'_, D>, BigInt<D1>, BigInt<D>, Signed, Unsigned);
+impl<D: Digit> BigIntRef<'_, D> {
+    fn inner_into_owned(self) -> <Self as AnyBigIntRef<D>>::Owned {
         match self {
-            Self::Signed(it) => it.is_zero(),
-            Self::Unsigned(it) => it.is_zero(),
+            Self::Signed(it) => BigInt::from(it.clone()),
+            Self::Unsigned(it) => BigInt::from(it.clone()),
         }
     }
-    fn is_abs_one(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_abs_one(),
-            Self::Unsigned(it) => it.is_abs_one(),
-        }
-    }
-    fn is_even(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_even(),
-            Self::Unsigned(it) => it.is_even(),
-        }
-    }
-    fn is_power_of_two(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_power_of_two(),
-            Self::Unsigned(it) => it.is_power_of_two(),
-        }
-    }
-
-    fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
-    where
-        T: TryInto<Radix<D>>,
-    {
-        match self {
-            Self::Signed(it) => it.try_digits(radix),
-            Self::Unsigned(it) => it.try_digits(radix),
-        }
-    }
-
-    fn rebase<D2: Digit>(&self) -> Self::Base<D2> {
-        match self {
-            Self::Signed(it) => Self::Base::Signed(it.rebase()),
-            Self::Unsigned(it) => Self::Base::Unsigned(it.rebase()),
-        }
-    }
-
-    fn abs(&self) -> &BigUInt<D> {
-        match self {
-            Self::Signed(it) => it.abs(),
-            Self::Unsigned(it) => it,
-        }
+    fn inner_cloned(&self) -> <Self as AnyBigIntRef<D>>::Owned {
+        self.inner_into_owned()
     }
 }
 
@@ -191,14 +218,7 @@ impl<'a, D: Digit> From<&'a BigInt<D>> for BigIntRef<'a, D> {
         }
     }
 }
-impl<D: Digit> Signed for BigInt<D> {
-    fn signum(&self) -> crate::SigNum {
-        match self {
-            Self::Signed(it) => it.signum(),
-            Self::Unsigned(it) => it.signum(),
-        }
-    }
-}
+
 impl<D: Digit> Convert<usize> for BigInt<D> {
     fn try_into(&self) -> Option<usize> {
         match self {
@@ -207,66 +227,14 @@ impl<D: Digit> Convert<usize> for BigInt<D> {
         }
     }
 }
-impl<D: Digit> Decomposable<D> for BigInt<D> {
-    fn le_digits(&self) -> impl ExactSizeIterator<Item = D> + DoubleEndedIterator + '_ {
-        Decomposable::<D>::le_digits(self.abs())
-    }
-}
-impl<D: Digit> Decomposable<bool> for BigInt<D> {
-    fn le_digits(&self) -> impl ExactSizeIterator<Item = bool> + DoubleEndedIterator + '_ {
-        Decomposable::<bool>::le_digits(self.abs())
-    }
-}
 
-impl<D: Digit> AnyBigIntRef<D> for BigInt<D> {
-    type Base<D1: Digit> = BigInt<D1>;
-    fn is_zero(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_zero(),
-            Self::Unsigned(it) => it.is_zero(),
-        }
+RefEnum!(BigInt<D>, BigInt<D1>, Self, Signed, Unsigned);
+impl<D: Digit> BigInt<D> {
+    const fn inner_into_owned(self) -> <Self as AnyBigIntRef<D>>::Owned {
+        self
     }
-    fn is_abs_one(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_abs_one(),
-            Self::Unsigned(it) => it.is_abs_one(),
-        }
-    }
-    fn is_even(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_even(),
-            Self::Unsigned(it) => it.is_even(),
-        }
-    }
-    fn is_power_of_two(&self) -> bool {
-        match self {
-            Self::Signed(it) => it.is_power_of_two(),
-            Self::Unsigned(it) => it.is_power_of_two(),
-        }
-    }
-
-    fn try_digits<T>(&self, radix: T) -> Result<usize, T::Error>
-    where
-        T: TryInto<Radix<D>>,
-    {
-        match self {
-            Self::Signed(it) => it.try_digits(radix),
-            Self::Unsigned(it) => it.try_digits(radix),
-        }
-    }
-
-    fn rebase<D2: Digit>(&self) -> Self::Base<D2> {
-        match self {
-            Self::Signed(it) => Self::Base::Signed(it.rebase()),
-            Self::Unsigned(it) => Self::Base::Unsigned(it.rebase()),
-        }
-    }
-
-    fn abs(&self) -> &BigUInt<D> {
-        match self {
-            Self::Signed(it) => it.abs(),
-            Self::Unsigned(it) => it,
-        }
+    fn inner_cloned(&self) -> <Self as AnyBigIntRef<D>>::Owned {
+        self.cloned()
     }
 }
 impl<D: Digit> AnyBigInt<D> for BigInt<D> {
@@ -276,10 +244,17 @@ impl<D: Digit> AnyBigInt<D> for BigInt<D> {
             Self::Unsigned(it) => it,
         }
     }
+    fn into_signed(self) -> BigIInt<D> {
+        match self {
+            Self::Signed(it) => it,
+            Self::Unsigned(it) => it.into(),
+        }
+    }
 }
 
 impl<D: Digit> AnyBigIntRef<D> for BigIInt<D> {
     type Base<D1: Digit> = BigIInt<D1>;
+    type Owned = Self;
     fn is_zero(&self) -> bool {
         self.is_zero()
     }
@@ -307,15 +282,25 @@ impl<D: Digit> AnyBigIntRef<D> for BigIInt<D> {
     fn abs(&self) -> &BigUInt<D> {
         self.abs()
     }
+    fn into_owned(self) -> Self::Owned {
+        self
+    }
+    fn cloned(&self) -> Self::Owned {
+        self.clone()
+    }
 }
 impl<D: Digit> AnyBigInt<D> for BigIInt<D> {
     fn into_abs(self) -> BigUInt<D> {
         self.into()
     }
+    fn into_signed(self) -> Self {
+        self
+    }
 }
 
 impl<D: Digit> AnyBigIntRef<D> for BigUInt<D> {
     type Base<D1: Digit> = BigUInt<D1>;
+    type Owned = Self;
     fn is_zero(&self) -> bool {
         self.is_zero()
     }
@@ -347,10 +332,19 @@ impl<D: Digit> AnyBigIntRef<D> for BigUInt<D> {
     fn abs(&self) -> &Self {
         self
     }
+    fn into_owned(self) -> Self::Owned {
+        self
+    }
+    fn cloned(&self) -> Self::Owned {
+        self.clone()
+    }
 }
 impl<D: Digit> AnyBigInt<D> for BigUInt<D> {
     fn into_abs(self) -> Self {
         self
+    }
+    fn into_signed(self) -> BigIInt<D> {
+        self.into()
     }
 }
 
